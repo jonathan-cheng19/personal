@@ -1,0 +1,2062 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magnificent 7 Stock Simulator - Professional Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            /* Default dark theme colors */
+            --bg-primary: #0f0f1e;
+            --bg-secondary: #1a1a2e;
+            --text-primary: #ffffff;
+            --text-secondary: #8b92a5;
+            --card-bg: rgba(26, 26, 46, 0.9);
+            --border-color: rgba(255, 255, 255, 0.1);
+        }
+        /* Light theme overrides */
+        body.light-theme {
+            --bg-primary: #f8f9fe;
+            --bg-secondary: #e6eaf3;
+            --text-primary: #1a1a2e;
+            --text-secondary: #52577a;
+            --card-bg: rgba(255, 255, 255, 0.9);
+            --border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        /*
+         * When using the light theme some form controls were hard coded to white
+         * text on semi‐transparent white backgrounds. The following overrides
+         * ensure that inputs remain legible by using the theme variables for
+         * foreground colours and neutral backgrounds/borders instead of
+         * white-on-white.
+         */
+        body.light-theme .leaderboard .join-section input,
+        body.light-theme .trade-controls input {
+            color: var(--text-primary);
+            background: rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(0, 0, 0, 0.2);
+        }
+        body.light-theme .leaderboard .join-section input::placeholder {
+            color: var(--text-secondary);
+        }
+        body.light-theme .leaderboard .join-section button {
+            /* Keep button text white for contrast against its coloured background */
+            color: #ffffff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            /* Make the container a positioning context so absolutely positioned children anchor correctly */
+            position: relative;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            animation: fadeInDown 0.8s ease;
+        }
+
+        .header h1 {
+            font-size: 42px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            color: #8b92a5;
+            font-size: 16px;
+            font-weight: 400;
+        }
+
+        .main-content {
+            display: grid;
+            gap: 25px;
+            animation: fadeIn 1s ease;
+        }
+
+        .market-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .market-stat {
+            /* Use theme-based card styling instead of hard-coded dark background */
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 15px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .market-stat-label {
+            font-size: 11px;
+            color: #8b92a5;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 5px;
+        }
+
+        .market-stat-value {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .stat-positive {
+            color: #4ade80;
+        }
+
+        .stat-negative {
+            color: #f87171;
+        }
+
+        .stat-neutral {
+            color: #60a5fa;
+        }
+
+        .chart-container {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 25px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            position: relative;
+            min-height: 500px;
+        }
+
+        .stock-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        /* Wrapper to display the stock grid and leaderboard side by side using CSS grid */
+        .stock-leaderboard-wrapper {
+            display: grid;
+            /* one flexible column for stock cards and one fixed column for leaderboard */
+            grid-template-columns: 1fr 280px;
+            gap: 20px;
+            align-items: flex-start;
+            margin-bottom: 25px;
+        }
+
+        .stock-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+            border-radius: 15px;
+            padding: 20px;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-color);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Display for player's share holdings per stock */
+        .stock-holding {
+            font-size: 11px;
+            color: #8b92a5;
+            margin-top: 6px;
+            text-align: center;
+        }
+
+        .stock-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .stock-symbol {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .stock-price {
+            font-size: 28px;
+            font-weight: 300;
+            margin-bottom: 5px;
+        }
+
+        .stock-change {
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .stock-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 11px;
+        }
+
+        .metric-item {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Specific styling for the market cap row.  Keep it a single
+         * column item so the number aligns with other first‑column values. */
+        .metric-item.market-cap-item {
+            grid-column: span 1;
+        }
+
+        /* Blank item used to occupy the second column when aligning market cap.
+         * Hide its contents and collapse its flex layout so it doesn’t
+         * introduce extra spacing. */
+        .metric-item.blank-item {
+            visibility: hidden;
+            height: 0;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* Allow a metric item to span both columns for entries like Market Cap */
+        .metric-item.full-span {
+            /*
+             * Let market cap rows span the full width but align label and value
+             * together instead of pushing the value to the far right. This
+             * ensures the number sits immediately after the label and lines up
+             * visually with the first column values in other rows.
+             */
+            grid-column: span 2;
+            justify-content: flex-start;
+            gap: 4px;
+        }
+
+        .metric-label {
+            color: #8b92a5;
+        }
+
+        .change-positive {
+            color: #4ade80;
+        }
+
+        .change-negative {
+            color: #f87171;
+        }
+
+        .change-neutral {
+            color: #8b92a5;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 14px 35px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-start {
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            color: white;
+        }
+
+        .btn-stop {
+            background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+            color: white;
+        }
+
+        .btn-reset {
+            background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+            color: white;
+        }
+
+        .btn-speed {
+            background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%);
+            color: white;
+            font-size: 14px;
+            padding: 10px 20px;
+        }
+
+        /* Theme toggle button */
+        .btn-theme {
+            background: linear-gradient(135deg, #fbbf24 0%, #facc15 100%);
+            color: #1a1a2e;
+            font-size: 14px;
+            padding: 10px 20px;
+        }
+
+        .speed-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 10px 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        .speed-label {
+            color: #8b92a5;
+            font-size: 14px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 20px;
+            padding: 12px;
+            background: var(--card-bg);
+            border-radius: 10px;
+            color: var(--text-secondary);
+            font-size: 14px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        .arrow {
+            display: inline-block;
+            font-size: 18px;
+        }
+
+        /* News ticker at bottom of the page */
+        .news-banner {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: var(--card-bg);
+            color: var(--text-primary);
+            font-size: 14px;
+            overflow: hidden;
+            white-space: nowrap;
+            border-top: 1px solid var(--border-color);
+            z-index: 999;
+            padding: 6px 0;
+        }
+
+        .news-banner span {
+            display: inline-block;
+            padding-left: 100%;
+            animation: newsScroll 20s linear infinite;
+        }
+
+        @keyframes newsScroll {
+            from { transform: translateX(0); }
+            to { transform: translateX(-100%); }
+        }
+
+        /* Leaderboard for multiplayer competitions */
+        .leaderboard {
+            /* Leaderboard sits alongside the stock grid within a grid wrapper */
+            position: relative;
+            width: 280px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 15px;
+            color: var(--text-primary);
+            max-height: 60vh;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .leaderboard h3 {
+            font-size: 18px;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .leaderboard .timer {
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-align: center;
+            color: #8b92a5;
+        }
+
+        /* Display for competition code */
+        .leaderboard .code-display {
+            font-size: 12px;
+            margin-bottom: 10px;
+            text-align: center;
+            color: #8b92a5;
+        }
+
+        /* Join section for entering a competition code */
+        .leaderboard .join-section {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+            align-items: center;
+        }
+        .leaderboard .join-section input {
+            flex: 1;
+            padding: 4px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+        }
+        .leaderboard .join-section input::placeholder {
+            color: #8b92a5;
+        }
+        .leaderboard .join-section button {
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            background-color: #4e8ef7;
+            color: #ffffff;
+        }
+
+        .leaderboard ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .leaderboard li {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .leaderboard li:last-child {
+            border-bottom: none;
+        }
+
+        /* Remove halo shadows as we use trophy icons instead */
+
+        /* Percentage return colors */
+        .return-positive {
+            color: #4ade80;
+        }
+        .return-negative {
+            color: #f87171;
+        }
+        .return-neutral {
+            color: #8b92a5;
+        }
+
+        /* Adjust leaderboard item layout for three columns */
+        .leaderboard li span:first-child {
+            flex: 1;
+        }
+        .leaderboard li span:nth-child(2),
+        .leaderboard li span:nth-child(3) {
+            flex: 1;
+            text-align: right;
+        }
+
+        /* Trade controls within stock cards */
+        .trade-controls {
+            display: none;
+            margin-top: 8px;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .trade-controls input {
+            width: 50px;
+            padding: 4px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            text-align: center;
+        }
+
+        .btn-trade {
+            background: linear-gradient(135deg, #4ade80 0%, #22c55e 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-trade.sell {
+            background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+        }
+
+        .btn-trade:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Winner popup styling */
+        #winnerPopup {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 14px;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            z-index: 1001;
+            min-width: 300px;
+            max-width: 90%;
+        }
+        #winnerPopup h2 {
+            margin-bottom: 10px;
+        }
+        #winnerPopup .archetypes {
+            text-align: left;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Magnificent 7 Stocks</h1>
+            <p class="subtitle">Professional Trading Simulation • Real-Time Market Dynamics</p>
+        </div>
+
+        <div class="main-content">
+            <div class="market-overview">
+                <div class="market-stat">
+                    <div class="market-stat-label">Market Cap</div>
+                    <div class="market-stat-value stat-neutral" id="totalMarketCap">$0</div>
+                </div>
+                <div class="market-stat">
+                    <div class="market-stat-label">Day Change</div>
+                    <div class="market-stat-value" id="dayChange">0.00%</div>
+                </div>
+                <div class="market-stat">
+                    <div class="market-stat-label">Volume</div>
+                    <div class="market-stat-value stat-neutral" id="totalVolume">0</div>
+                </div>
+                <div class="market-stat">
+                    <div class="market-stat-label">Volatility</div>
+                    <div class="market-stat-value stat-neutral" id="vix">15.0</div>
+                </div>
+            </div>
+
+            <!-- Wrap the stock grid and leaderboard in a flex container -->
+            <div class="stock-leaderboard-wrapper">
+                <div class="stock-grid" id="stockGrid"></div>
+                <!-- Leaderboard moved here to sit beside the stock cards without overlapping -->
+                <div id="leaderboard" class="leaderboard">
+                    <h3>Leaderboard</h3>
+                    <div class="timer" id="leaderboardTimer">Time left: --:--</div>
+                    <!-- Display competition code for players to share and join -->
+                    <div class="code-display" id="competitionCode"></div>
+                    <ul id="leaderboardList"></ul>
+                    <div class="player-info" id="playerInfo"></div>
+                    <!-- Section to join an existing competition using a code -->
+                    <div class="join-section">
+                        <input type="text" id="joinCodeInput" placeholder="Enter code" />
+                        <button id="joinCodeBtn" onclick="handleJoinCode()">Join</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <canvas id="stockChart"></canvas>
+            </div>
+
+            <div class="controls">
+                <button class="btn btn-start" id="startBtn" onclick="toggleSimulation()">
+                    Start Trading
+                </button>
+                <button class="btn btn-reset" onclick="resetMarket()">
+                    Reset Market
+                </button>
+                <div class="speed-controls">
+                    <span class="speed-label">Speed:</span>
+                    <button class="btn btn-speed" onclick="setSpeed(2000)">0.5x</button>
+                    <button class="btn btn-speed" onclick="setSpeed(1000)">1x</button>
+                    <button class="btn btn-speed" onclick="setSpeed(500)">2x</button>
+                </div>
+                <!-- Theme toggle button -->
+                <button class="btn btn-theme" onclick="toggleTheme()">Toggle Theme</button>
+            </div>
+
+            <div class="status" id="status">
+                Market Closed • Click START TRADING to begin
+            </div>
+            <!-- Insert news ticker and popup elements -->
+            <div class="news-banner"><span id="newsBannerText"></span></div>
+            <div id="winnerPopup">
+                <h2 id="winnerMessage"></h2>
+                <!-- Details about the winner (net worth, return, archetype) -->
+                <p id="winnerDetails"></p>
+                <!-- Details about the current player (net worth, return, archetype) -->
+                <p id="playerResults"></p>
+                <!-- Archetype information for winner and player -->
+                <div class="archetypes" id="archetypeList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Stock data with realistic attributes
+        const stocks = {
+            'AAPL': {
+                price: 15 + Math.random() * 5,
+                // Approximate initial market cap in billions (e.g., $2.7T)
+                marketCap: 2700,
+                color: 'rgb(100, 126, 234)',
+                history: [],
+                startPrice: 0,
+                volume: 0,
+                avgVolume: 85000000,
+                volatility: 0.8,
+                dayHigh: 0,
+                dayLow: 999999,
+                momentum: 0,
+                rsi: 50,
+                correlation: { MSFT: 0.7, GOOGL: 0.6 }
+            },
+            'MSFT': {
+                price: 14 + Math.random() * 4,
+                marketCap: 2400,
+                color: 'rgb(255, 127, 14)',
+                history: [],
+                startPrice: 0,
+                volume: 0,
+                avgVolume: 25000000,
+                volatility: 0.7,
+                dayHigh: 0,
+                dayLow: 999999,
+                momentum: 0,
+                rsi: 50,
+                correlation: { AAPL: 0.7, GOOGL: 0.65 }
+            },
+            'GOOGL': {
+                price: 12 + Math.random() * 4,
+                marketCap: 1800,
+                color: 'rgb(44, 160, 44)',
+                history: [],
+                startPrice: 0,
+                volume: 0,
+                avgVolume: 30000000,
+                volatility: 0.85,
+                dayHigh: 0,
+                dayLow: 999999,
+                momentum: 0,
+                rsi: 50,
+                correlation: { AAPL: 0.6, MSFT: 0.65 }
+            },
+            'AMZN': {
+                price: 13 + Math.random() * 5,
+                marketCap: 1600,
+                color: 'rgb(214, 39, 40)',
+                history: [],
+                startPrice: 0,
+                volume: 0,
+                avgVolume: 50000000,
+                volatility: 0.95,
+                dayHigh: 0,
+                dayLow: 999999,
+                momentum: 0,
+                rsi: 50,
+                correlation: { MSFT: 0.55, TSLA: 0.4 }
+            },
+            'TSLA': {
+                price: 11 + Math.random() * 6,
+                marketCap: 800,
+                color: 'rgb(148, 103, 189)',
+                history: [],
+                startPrice: 0,
+                volume: 0,
+                avgVolume: 100000000,
+                volatility: 1.5,
+                dayHigh: 0,
+                dayLow: 999999,
+                momentum: 0,
+                rsi: 50,
+                correlation: { NVDA: 0.6, AMZN: 0.4 }
+            },
+            'META': {
+                price: 12 + Math.random() * 4,
+                marketCap: 800,
+                color: 'rgb(140, 86, 75)',
+                history: [],
+                startPrice: 0,
+                volume: 0,
+                avgVolume: 20000000,
+                volatility: 1.1,
+                dayHigh: 0,
+                dayLow: 999999,
+                momentum: 0,
+                rsi: 50,
+                correlation: { GOOGL: 0.7, AAPL: 0.5 }
+            },
+            'NVDA': {
+                price: 16 + Math.random() * 4,
+                marketCap: 1100,
+                color: 'rgb(227, 119, 194)',
+                history: [],
+                startPrice: 0,
+                volume: 0,
+                avgVolume: 45000000,
+                volatility: 1.3,
+                dayHigh: 0,
+                dayLow: 999999,
+                momentum: 0,
+                rsi: 50,
+                correlation: { TSLA: 0.6, MSFT: 0.6 }
+            }
+        };
+
+        // Initialize starting prices
+        for (const [symbol, data] of Object.entries(stocks)) {
+            data.startPrice = data.price;
+            data.dayHigh = data.price;
+            data.dayLow = data.price;
+            // Compute shares outstanding based on initial market cap (in billions) and price
+            // marketCap is in billions; convert to billions and divide by price to get number of billions of shares
+            // Example: if marketCap = 2700 (i.e., $2.7T) and price = 15, sharesOutstanding ≈ 180 (in billions)
+            data.sharesOutstanding = data.marketCap / data.price;
+        }
+
+        // Global variables
+        let timePoints = [];
+        let currentTime = 0;
+        let running = false;
+        let intervalId = null;
+        let chart = null;
+        let currentMaxPrice = 30;
+        let currentMinPrice = 0;
+        let updateSpeed = 1000;
+        let vix = 15;
+        let marketMomentum = 0;
+
+        // Market cycle and news variables
+        let marketPhase = 'bull';     // 'bull' or 'bear'
+        let cycleDuration = 300;      // number of ticks per cycle
+        let cycleProgress = 0;
+
+        // News system
+        const newsEvents = [
+            { text: 'Federal Reserve lowers interest rates, boosting market confidence.', effects: { global: 0.02 } },
+            { text: 'Tech giant AAPL releases groundbreaking product.', effects: { AAPL: 0.05 } },
+            { text: 'MSFT announces record earnings beating analyst expectations.', effects: { MSFT: 0.04 } },
+            { text: 'GOOGL faces antitrust investigations leading to investor concern.', effects: { GOOGL: -0.04 } },
+            { text: 'AMZN expands into healthcare with major acquisition.', effects: { AMZN: 0.03 } },
+            { text: 'TSLA production issues cause delays in deliveries.', effects: { TSLA: -0.05 } },
+            { text: 'META launches privacy-centric update restoring user trust.', effects: { META: 0.03 } },
+            { text: 'NVDA chip supply shortage worries investors.', effects: { NVDA: -0.04 } },
+            { text: 'Geopolitical tensions create uncertainty across global markets.', effects: { global: -0.03 } },
+            { text: 'Positive employment data points to a strong economy.', effects: { global: 0.02 } }
+        ];
+        let newsCooldown = 20; // ticks until next news event
+
+        // Competition variables
+        let players = {};
+        let botsList = [];
+        let playerName = '';
+        let competition = null;
+        let competitionInterval = null;
+        let botInterval = null;
+        const startingCash = 100000; // starting cash for each player
+
+        // Icons to represent each archetype
+        const archetypeIcons = {
+            'High-Frequency Trader': '⚡',
+            'Aggressive Investor': '🚀',
+            'Momentum Chaser': '📈',
+            'Contrarian Investor': '↩️',
+            'Conservative Investor': '🐢',
+            'Balanced Trader': '⚖️',
+            'Inactive Trader': '🛌',
+            // New archetypes
+            'Day Trader': '⏱️',
+            'Whale Trader': '🐋',
+            'Volatility Rider': '🎢'
+        };
+
+        // Descriptions for each archetype. These short blurbs explain how
+        // the player earned their trading style classification and are shown
+        // in the end of competition summary. When adding new archetypes
+        // make sure to include an entry here.
+        const archetypeDescriptions = {
+            'High-Frequency Trader': 'Executed a large number of rapid trades focusing on short‑term opportunities.',
+            'Aggressive Investor': 'Took on high‑volatility stocks and large positions to maximise potential gains.',
+            'Momentum Chaser': 'Followed trending stocks, buying into momentum and riding market waves.',
+            'Contrarian Investor': 'Went against the market, buying dips and selling highs for contrarian gains.',
+            'Conservative Investor': 'Traded infrequently, focusing on stable, low‑volatility stocks.',
+            'Balanced Trader': 'Maintained a balanced approach with moderate trades and diversification.',
+            'Inactive Trader': 'Made little to no trades, holding on to their starting cash.',
+            'Day Trader': 'Completed frequent trades during the session, seeking quick, small profits.',
+            'Whale Trader': 'Made large‑volume trades, influencing the market with big buys and sells.',
+            'Volatility Rider': 'Targeted highly volatile stocks, aiming to capitalise on big swings.'
+        };
+
+        // Calculate RSI
+        function calculateRSI(data) {
+            if (data.history.length < 14) return 50;
+            
+            const changes = [];
+            for (let i = 1; i < Math.min(15, data.history.length); i++) {
+                changes.push(data.history[i] - data.history[i-1]);
+            }
+            
+            const gains = changes.filter(c => c > 0);
+            const losses = changes.filter(c => c < 0);
+            
+            if (gains.length === 0) return 0;
+            if (losses.length === 0) return 100;
+            
+            const avgGain = gains.reduce((a, b) => a + b, 0) / 14;
+            const avgLoss = Math.abs(losses.reduce((a, b) => a + b, 0)) / 14;
+            
+            const rs = avgGain / avgLoss;
+            const rsi = 100 - (100 / (1 + rs));
+            
+            return Math.round(rsi);
+        }
+
+        // Calculate VIX
+        function calculateVIX() {
+            let totalVolatility = 0;
+            let count = 0;
+            
+            for (const [symbol, data] of Object.entries(stocks)) {
+                if (data.history.length > 5) {
+                    const recent = data.history.slice(-5);
+                    for (let i = 1; i < recent.length; i++) {
+                        const change = Math.abs((recent[i] - recent[i-1]) / recent[i-1]);
+                        totalVolatility += change;
+                        count++;
+                    }
+                }
+            }
+            
+            if (count > 0) {
+                vix = 10 + (totalVolatility / count * 500);
+                vix = Math.min(80, Math.max(10, vix));
+            }
+            
+            return vix.toFixed(1);
+        }
+
+        // Format volume
+        function formatVolume(vol) {
+            if (vol >= 1000000) return (vol / 1000000).toFixed(1) + 'M';
+            if (vol >= 1000) return (vol / 1000).toFixed(1) + 'K';
+            return vol.toString();
+        }
+
+        // Format a number as currency with comma separators and two decimal places
+        function formatCurrency(value) {
+            // Ensure value is a number
+            const num = Number(value);
+            return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        // Format market cap values (in billions) using B and T suffixes
+        function formatMarketCap(cap) {
+            // cap is in billions
+            const num = Number(cap);
+            if (num >= 1000) {
+                return (num / 1000).toFixed(1) + 'T';
+            } else if (num >= 1) {
+                return num.toFixed(1) + 'B';
+            } else {
+                return (num * 1000).toFixed(1) + 'M';
+            }
+        }
+
+        // Calculate chart range
+        function calculateChartRange() {
+            let maxPrice = 30;
+            let minPrice = 0;
+            
+            for (const [symbol, data] of Object.entries(stocks)) {
+                maxPrice = Math.max(maxPrice, data.price);
+                if (data.history.length > 0) {
+                    maxPrice = Math.max(maxPrice, ...data.history);
+                    minPrice = Math.min(minPrice, ...data.history);
+                }
+            }
+            
+            const padding = Math.max(5, Math.ceil(maxPrice * 0.1));
+            currentMaxPrice = maxPrice + padding;
+            currentMinPrice = Math.max(0, minPrice - 2);
+            
+            if (chart) {
+                chart.options.scales.y.min = currentMinPrice;
+                chart.options.scales.y.max = currentMaxPrice;
+            }
+        }
+
+        // Initialize stock cards
+        function initializeStockCards() {
+            const grid = document.getElementById('stockGrid');
+            grid.innerHTML = '';
+            
+            for (const [symbol, data] of Object.entries(stocks)) {
+                const card = document.createElement('div');
+                card.className = 'stock-card';
+                card.style.borderTop = `3px solid ${data.color}`;
+                // Format initial price with commas
+                const priceFormatted = formatCurrency(data.price);
+                // Format initial market cap for display (convert billions to suffix)
+                const mcFormatted = formatMarketCap(data.marketCap);
+                card.innerHTML = `
+                    <div class="stock-header">
+                        <div class="stock-symbol" style="color: ${data.color}">${symbol}</div>
+                    </div>
+                    <div class="stock-price" id="price-${symbol}">$${priceFormatted}</div>
+                    <div class="stock-change" id="change-${symbol}">
+                        <span><span class="arrow">→</span> <span>0.00%</span></span>
+                        <span>$0.00</span>
+                    </div>
+                    <div class="stock-metrics">
+                        <div class="metric-item">
+                            <span class="metric-label">Day Range</span>
+                            <span id="range-${symbol}">$${priceFormatted}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Volume</span>
+                            <span id="vol-${symbol}">0</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">RSI</span>
+                            <span id="rsi-${symbol}">50</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Volatility</span>
+                            <span>${(data.volatility * 100).toFixed(0)}%</span>
+                        </div>
+                        <!-- Market cap row aligns with RSI row.  To ensure the value
+                             aligns with other first‑column values (like RSI), we place
+                             the market‑cap entry in its own metric item and then add
+                             an empty metric item to occupy the second column.  This
+                             maintains the two‑column grid structure so the market cap
+                             value lines up with the RSI value.  The blank cell is
+                             intentionally empty and hidden via CSS. -->
+                        <div class="metric-item market-cap-item">
+                            <span class="metric-label">Market Cap</span>
+                            <span id="mc-${symbol}">$${mcFormatted}</span>
+                        </div>
+                        <div class="metric-item blank-item"></div>
+                    </div>
+                    <div class="trade-controls" id="trade-${symbol}">
+                        <input type="number" min="1" value="1" id="qty-${symbol}" />
+                        <button class="btn-trade buy" onclick="executeTrade('${symbol}', 'buy')">Buy</button>
+                        <button class="btn-trade sell" onclick="executeTrade('${symbol}', 'sell')">Sell</button>
+                    </div>
+                    <div class="stock-holding">Own: <span id="holding-${symbol}">0</span></div>
+                `;
+                grid.appendChild(card);
+            }
+        }
+
+        // Initialize chart
+        function initializeChart() {
+            const ctx = document.getElementById('stockChart').getContext('2d');
+            
+            const datasets = Object.entries(stocks).map(([symbol, data]) => ({
+                label: symbol,
+                data: [],
+                borderColor: data.color,
+                backgroundColor: data.color + '20',
+                borderWidth: 2,
+                tension: 0.4,
+                pointRadius: 0,
+                pointHoverRadius: 6
+            }));
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                color: '#fff',
+                                font: {
+                                    size: 14,
+                                    weight: '600'
+                                },
+                                padding: 15,
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    // Format tooltip values with commas
+                                    return context.dataset.label + ': $' + formatCurrency(context.parsed.y);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Time (ticks)',
+                                color: '#8b92a5',
+                                font: {
+                                    size: 14
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#8b92a5'
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Price ($)',
+                                color: '#8b92a5',
+                                font: {
+                                    size: 14
+                                }
+                            },
+                            min: currentMinPrice,
+                            max: currentMaxPrice,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#8b92a5',
+                                callback: function(value) {
+                                    // Add commas to y-axis tick labels
+                                    return '$' + Number(value).toLocaleString('en-US');
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            for (const [symbol, data] of Object.entries(stocks)) {
+                data.history.push(data.price);
+            }
+            timePoints.push(0);
+            updateChart();
+        }
+
+        // Update prices
+        function updatePrices() {
+            // Update market cycle and news events before computing price changes
+            updateMarketCycle();
+            maybeTriggerNews();
+            currentTime++;
+            timePoints.push(currentTime);
+            
+            // Calculate market momentum
+            marketMomentum = 0;
+            for (const [symbol, data] of Object.entries(stocks)) {
+                if (data.history.length > 5) {
+                    const recent = data.history.slice(-5);
+                    marketMomentum += (recent[recent.length - 1] - recent[0]) / recent[0];
+                }
+            }
+            marketMomentum /= 7;
+            
+            let totalDayChange = 0;
+            let totalVolume = 0;
+            let totalMarketCap = 0;
+
+            for (const [symbol, data] of Object.entries(stocks)) {
+                const oldPrice = data.price;
+                
+                // Base movement (smaller base amplitude for more realistic moves)
+                let baseChange = (Math.random() - 0.5) * 0.4 * data.volatility;
+                
+                // Add momentum
+                baseChange += data.momentum * 0.01;
+                data.momentum *= 0.95;
+                
+                // RSI mean reversion
+                data.rsi = calculateRSI(data);
+                if (data.rsi > 70) {
+                    baseChange -= 0.05;
+                } else if (data.rsi < 30) {
+                    baseChange += 0.05;
+                }
+                
+                // Correlation effects
+                for (const [correlatedSymbol, correlation] of Object.entries(data.correlation || {})) {
+                    if (stocks[correlatedSymbol] && stocks[correlatedSymbol].history.length > 1) {
+                        const lastIdx = stocks[correlatedSymbol].history.length - 1;
+                        const correlatedChange = (stocks[correlatedSymbol].history[lastIdx] - 
+                                                 stocks[correlatedSymbol].history[lastIdx - 1]) / 
+                                                 stocks[correlatedSymbol].history[lastIdx - 1];
+                        baseChange += correlatedChange * correlation * 0.2;
+                    }
+                }
+                
+                // Market momentum
+                baseChange += marketMomentum * 0.1;
+                
+                // Market cycle influence: bull markets push prices up slightly, bear markets down
+                baseChange += (marketPhase === 'bull' ? 0.02 : -0.02);
+
+                // Adjust volatility based on market cap (large caps are less volatile, small caps more)
+                // Use a cap factor derived from current market cap (in billions). For example, AAPL (~2700B) yields ~0.6, TSLA (~800B) yields ~1.1.
+                const capFactorRaw = Math.sqrt(1000 / data.marketCap);
+                const capFactor = Math.min(2, Math.max(0.6, capFactorRaw));
+
+                // Scale by price and cap factor
+                let scaledChange = baseChange * data.price * capFactor;
+
+                // Apply change with minimum price of $1
+                let newPrice = Math.max(1, oldPrice + scaledChange);
+                
+                data.price = newPrice;
+                data.history.push(newPrice);
+                
+                // Update metrics
+                data.dayHigh = Math.max(data.dayHigh, newPrice);
+                data.dayLow = Math.min(data.dayLow, newPrice);
+                
+                // Generate volume
+                const priceChangePercent = Math.abs((newPrice - oldPrice) / oldPrice);
+                data.volume = Math.floor((data.avgVolume / 390) * (1 + priceChangePercent * 10) * (0.8 + Math.random() * 0.4));
+                totalVolume += data.volume;
+                
+                // Day change
+                const dayChange = ((newPrice - data.startPrice) / data.startPrice) * 100;
+                totalDayChange += dayChange;
+                
+                // Update company's market cap based on shares outstanding and new price
+                // sharesOutstanding is number of billions of shares; multiplying by price gives market cap in billions
+                data.marketCap = data.sharesOutstanding * newPrice;
+                totalMarketCap += data.marketCap;
+                
+                // Keep history limited
+                if (data.history.length > 100) {
+                    data.history.shift();
+                }
+                
+                // Update UI
+                updateStockCard(symbol, oldPrice, newPrice, data);
+            }
+
+            // Update market stats
+            document.getElementById('totalMarketCap').textContent = '$' + formatMarketCap(totalMarketCap);
+            document.getElementById('totalVolume').textContent = formatVolume(totalVolume);
+            document.getElementById('dayChange').textContent = (totalDayChange / 7).toFixed(2) + '%';
+            document.getElementById('dayChange').className = 'market-stat-value ' + 
+                (totalDayChange > 0 ? 'stat-positive' : totalDayChange < 0 ? 'stat-negative' : 'stat-neutral');
+            document.getElementById('vix').textContent = calculateVIX();
+
+            if (timePoints.length > 100) {
+                timePoints.shift();
+            }
+
+            calculateChartRange();
+            updateChart();
+
+            // Update status message with current speed
+            const statusEl = document.getElementById('status');
+            if (statusEl && running) {
+                statusEl.textContent = `Market Open • Updates every ${updateSpeed/1000}s`;
+            }
+
+            // Update leaderboard for competitions
+            updateLeaderboard();
+
+            // Save competition state periodically
+            saveCompetitionState();
+        }
+
+        // Update stock card
+        function updateStockCard(symbol, oldPrice, newPrice, data) {
+            const priceEl = document.getElementById(`price-${symbol}`);
+            const changeEl = document.getElementById(`change-${symbol}`);
+            const rangeEl = document.getElementById(`range-${symbol}`);
+            const volEl = document.getElementById(`vol-${symbol}`);
+            const rsiEl = document.getElementById(`rsi-${symbol}`);
+            
+            // Format price with comma separators
+            priceEl.textContent = `$${formatCurrency(newPrice)}`;
+            
+            const change = newPrice - data.startPrice;
+            const changePercent = data.startPrice !== 0 ? (change / data.startPrice * 100) : 0;
+            
+            let arrow, className;
+            if (change > 0) {
+                arrow = '↑';
+                className = 'change-positive';
+            } else if (change < 0) {
+                arrow = '↓';
+                className = 'change-negative';
+            } else {
+                arrow = '→';
+                className = 'change-neutral';
+            }
+            
+            changeEl.className = 'stock-change ' + className;
+            // Format change dollar amount with commas (use absolute value for formatting)
+            const changeFormatted = formatCurrency(Math.abs(change));
+            changeEl.innerHTML = `
+                <span><span class="arrow">${arrow}</span> <span>${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%</span></span>
+                <span>${change >= 0 ? '+' : '-' }$${changeFormatted}</span>
+            `;
+            
+            // Format day range with commas
+            rangeEl.textContent = `$${formatCurrency(data.dayLow)}-${formatCurrency(data.dayHigh)}`;
+            volEl.textContent = formatVolume(data.volume);
+            rsiEl.textContent = data.rsi;
+            
+            if (data.rsi > 70) {
+                rsiEl.style.color = '#f87171';
+            } else if (data.rsi < 30) {
+                rsiEl.style.color = '#4ade80';
+            } else {
+                // Default RSI colour should follow the theme rather than hard coded white
+                const defaultColour = getComputedStyle(document.body).getPropertyValue('--text-primary').trim() || '#ffffff';
+                rsiEl.style.color = defaultColour;
+            }
+
+            // Update market cap display for this stock (convert billions to suffix)
+            const mcEl = document.getElementById(`mc-${symbol}`);
+            if (mcEl) {
+                mcEl.textContent = '$' + formatMarketCap(data.marketCap);
+            }
+        }
+
+        // Update chart
+        function updateChart() {
+            if (!chart) return;
+            
+            chart.data.labels = timePoints.slice();
+            
+            Object.entries(stocks).forEach(([symbol, data], index) => {
+                chart.data.datasets[index].data = data.history.slice();
+            });
+            
+            chart.update('none');
+
+            // Apply colours based on the current theme. Without this the chart
+            // will always use white text for legends and axes, which is
+            // unreadable on a light background. See updateChartColors() below.
+            updateChartColors();
+        }
+
+        // Toggle simulation
+        function toggleSimulation() {
+            // Only the host of the competition can start or stop the simulation
+            if (competition && competition.host && playerName !== competition.host) {
+                alert('Only the host can start or stop the simulation.');
+                return;
+            }
+
+            const btn = document.getElementById('startBtn');
+            const status = document.getElementById('status');
+            
+            if (!running) {
+                running = true;
+                btn.textContent = 'Stop Trading';
+                btn.className = 'btn btn-stop';
+                status.textContent = `Market Open • Updates every ${updateSpeed/1000}s`;
+                intervalId = setInterval(updatePrices, updateSpeed);
+            } else {
+                running = false;
+                btn.textContent = 'Start Trading';
+                btn.className = 'btn btn-start';
+                status.textContent = 'Market Paused • Click START TRADING to resume';
+                
+                if (intervalId) {
+                    clearInterval(intervalId);
+                    intervalId = null;
+                }
+            }
+        }
+
+        // Set simulation speed
+        function setSpeed(speed) {
+            // Only the host of the competition can change the simulation speed
+            if (competition && competition.host && playerName !== competition.host) {
+                alert('Only the host can change the simulation speed.');
+                return;
+            }
+            updateSpeed = speed;
+            if (running) {
+                clearInterval(intervalId);
+                intervalId = setInterval(updatePrices, updateSpeed);
+                document.getElementById('status').textContent = `Market Open • Updates every ${updateSpeed/1000}s`;
+            }
+        }
+
+        // Reset market
+        function resetMarket() {
+            if (running) {
+                toggleSimulation();
+            }
+            
+            for (const [symbol, data] of Object.entries(stocks)) {
+                data.price = 10 + Math.random() * 10;
+                data.startPrice = data.price;
+                data.history = [data.price];
+                data.dayHigh = data.price;
+                data.dayLow = data.price;
+                data.volume = 0;
+                data.momentum = 0;
+                data.rsi = 50;
+                
+                // Reset display
+                const priceEl = document.getElementById(`price-${symbol}`);
+                const changeEl = document.getElementById(`change-${symbol}`);
+                const rangeEl = document.getElementById(`range-${symbol}`);
+                const volEl = document.getElementById(`vol-${symbol}`);
+                const rsiEl = document.getElementById(`rsi-${symbol}`);
+                
+                priceEl.textContent = `$${formatCurrency(data.price)}`;
+                changeEl.className = 'stock-change change-neutral';
+                changeEl.innerHTML = `<span><span class="arrow">→</span> <span>0.00%</span></span><span>$0.00</span>`;
+                rangeEl.textContent = `$${formatCurrency(data.price)}`;
+                volEl.textContent = '0';
+                rsiEl.textContent = '50';
+                // Use theme variable for default RSI colour
+                const defaultColour = getComputedStyle(document.body).getPropertyValue('--text-primary').trim() || '#ffffff';
+                rsiEl.style.color = defaultColour;
+            }
+            
+            currentTime = 0;
+            timePoints = [0];
+            vix = 15;
+            marketMomentum = 0;
+            currentMaxPrice = 30;
+            currentMinPrice = 0;
+            
+            document.getElementById('totalMarketCap').textContent = '$0';
+            document.getElementById('totalVolume').textContent = '0';
+            document.getElementById('dayChange').textContent = '0.00%';
+            document.getElementById('dayChange').className = 'market-stat-value stat-neutral';
+            document.getElementById('vix').textContent = '15.0';
+            
+            calculateChartRange();
+            updateChart();
+        }
+
+        // ----------------------------------------
+        // Market cycle and news functions
+        // ----------------------------------------
+
+        // Update bull/bear market cycle
+        function updateMarketCycle() {
+            cycleProgress++;
+            if (cycleProgress >= cycleDuration) {
+                cycleProgress = 0;
+                marketPhase = (marketPhase === 'bull' ? 'bear' : 'bull');
+                // Next cycle duration is random between 200 and 600 ticks
+                cycleDuration = 200 + Math.floor(Math.random() * 400);
+            }
+            // Do not display market cycle state to the user; it remains internal
+        }
+
+        // Trigger a news event and apply its effects
+        function triggerNews() {
+            const item = newsEvents[Math.floor(Math.random() * newsEvents.length)];
+            const banner = document.getElementById('newsBannerText');
+            if (banner) {
+                banner.textContent = item.text;
+                // Restart animation by removing and re-adding the animation property
+                banner.style.animation = 'none';
+                // Force reflow
+                void banner.offsetWidth;
+                banner.style.animation = 'newsScroll 20s linear infinite';
+            }
+            // Apply news effects to stocks and market momentum
+            if (item.effects) {
+                if (item.effects.global) {
+                    // Global effect influences market momentum
+                    marketMomentum += item.effects.global * 2;
+                }
+                for (const [sym, effect] of Object.entries(item.effects)) {
+                    if (sym !== 'global' && stocks[sym]) {
+                        // Apply effect by adjusting momentum temporarily
+                        stocks[sym].momentum += effect * 10;
+                    }
+                }
+            }
+            // Reset cooldown to random interval to avoid constant news
+            newsCooldown = 30 + Math.floor(Math.random() * 50);
+        }
+
+        // Determine if a news event should trigger
+        function maybeTriggerNews() {
+            newsCooldown--;
+            if (newsCooldown <= 0) {
+                triggerNews();
+            }
+        }
+
+        // ----------------------------------------
+        // Competition and trading functions
+        // ----------------------------------------
+
+        // Generate a random competition code
+        function generateCode() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+
+        // Create a new competition with optional bots
+        function createCompetition(numBots, durationMinutes) {
+            players = {};
+            botsList = [];
+            competition = {
+                code: generateCode(),
+                duration: durationMinutes * 60 * 1000,
+                startTime: null,
+                endTime: null,
+                started: false,
+                host: playerName // record who created the competition
+            };
+            // Add human player
+            players[playerName] = {
+                name: playerName,
+                cash: startingCash,
+                portfolio: {},
+                trades: 0,
+                tradeHistory: [],
+                archetype: ''
+            };
+            Object.keys(stocks).forEach(sym => {
+                players[playerName].portfolio[sym] = 0;
+            });
+            // Add bots with funny punny names
+            /**
+             * Generate punny bot names based on well-known investors and stock puns.
+             * We pick names sequentially from this array and append a number if we run out.
+             */
+            const punnyNames = [
+                'Bull Gates',     // Bill Gates pun
+                'Warren Buffoon', // Warren Buffett pun
+                'Elon Smusk',     // Elon Musk pun
+                'Bear Jobs',      // Steve Jobs pun (bear market reference)
+                'Gordon Gecko',   // Gordon Gekko, fictional trader
+                'Jeff Bozos',     // Jeff Bezos pun
+                'Janet Yellen-It',// Janet Yellen pun
+                'Mark Zuck Bucks',// Mark Zuckerberg pun
+                'Trader Joe',     // Grocery chain pun
+                'Hedge Fundie'    // Hedge fund pun
+            ];
+            for (let i = 0; i < numBots; i++) {
+                // Cycle through punny names and append a number if necessary to ensure uniqueness
+                let baseName = punnyNames[i % punnyNames.length];
+                const suffix = Math.floor(i / punnyNames.length);
+                if (suffix > 0) baseName += ' ' + (suffix + 1);
+                const botName = baseName;
+                players[botName] = {
+                    name: botName,
+                    cash: startingCash,
+                    portfolio: {},
+                    trades: 0,
+                    tradeHistory: [],
+                    archetype: ''
+                };
+                Object.keys(stocks).forEach(sym => {
+                    players[botName].portfolio[sym] = 0;
+                });
+                botsList.push(botName);
+            }
+        }
+
+        // Join an existing competition stored in localStorage
+        function joinCompetition(code) {
+            const stored = localStorage.getItem('competition_' + code);
+            if (stored) {
+                const compData = JSON.parse(stored);
+                competition = compData.competition;
+                players = compData.players;
+                // Add current user
+                players[playerName] = {
+                    name: playerName,
+                    cash: startingCash,
+                    portfolio: {},
+                    trades: 0,
+                    tradeHistory: [],
+                    archetype: ''
+                };
+                Object.keys(stocks).forEach(sym => {
+                    players[playerName].portfolio[sym] = 0;
+                });
+                // Update storage
+                localStorage.setItem('competition_' + code, JSON.stringify({ competition, players }));
+                return true;
+            }
+            alert('Competition code not found.');
+            return false;
+        }
+
+        // Save current competition state to localStorage (for demonstration)
+        function saveCompetitionState() {
+            if (competition && competition.code) {
+                localStorage.setItem('competition_' + competition.code, JSON.stringify({ competition, players }));
+            }
+        }
+
+        // Start the competition and trading simulation
+        function startCompetition() {
+            if (!competition) return;
+            // Set start and end times
+            competition.startTime = Date.now();
+            competition.endTime = competition.startTime + competition.duration;
+            competition.started = true;
+            // Display leaderboard
+            const board = document.getElementById('leaderboard');
+            if (board) {
+                board.style.display = 'block';
+            }
+            updateLeaderboard();
+            // Show trade controls for all cards
+            document.querySelectorAll('.trade-controls').forEach(el => {
+                el.style.display = 'flex';
+            });
+            // Initialize holdings display for the current player
+            updateHoldings();
+            // Start simulation if not already running
+            if (!running) {
+                toggleSimulation();
+            }
+            // Start competition timer check
+            if (competitionInterval) clearInterval(competitionInterval);
+            competitionInterval = setInterval(() => {
+                updateLeaderboard();
+                const now = Date.now();
+                const remaining = Math.max(0, competition.endTime - now);
+                // Update timer display
+                const timerEl = document.getElementById('leaderboardTimer');
+                if (timerEl) {
+                    const mins = Math.floor(remaining / 60000).toString().padStart(2, '0');
+                    const secs = Math.floor((remaining % 60000) / 1000).toString().padStart(2, '0');
+                    timerEl.textContent = `Time left: ${mins}:${secs}`;
+                }
+                if (remaining <= 0) {
+                    endCompetition();
+                }
+            }, 1000);
+            // Start bots trading
+            if (botsList.length > 0) {
+                if (botInterval) clearInterval(botInterval);
+                botInterval = setInterval(runBots, updateSpeed * 4);
+            }
+        }
+
+        // Calculate net worth for a given player
+        function calculateNetWorth(player) {
+            let total = player.cash;
+            for (const [sym, qty] of Object.entries(player.portfolio)) {
+                total += qty * stocks[sym].price;
+            }
+            return total;
+        }
+
+        // Update leaderboard display
+        function updateLeaderboard() {
+            if (!competition || !competition.started) return;
+            const listEl = document.getElementById('leaderboardList');
+            if (!listEl) return;
+            // Compute net worth for each player
+            const items = Object.values(players).map(p => {
+                return { name: p.name, net: calculateNetWorth(p), trades: p.trades };
+            });
+            // Sort descending by net worth
+            items.sort((a, b) => b.net - a.net);
+            // Populate list
+            listEl.innerHTML = '';
+            items.forEach((item, index) => {
+                const li = document.createElement('li');
+                // Calculate percentage return based on starting cash
+                const percent = ((item.net - startingCash) / startingCash) * 100;
+                const cls = percent > 0 ? 'return-positive' : percent < 0 ? 'return-negative' : 'return-neutral';
+                // Assign trophy icons for the top three ranks
+                let trophy = '';
+                if (index === 0) trophy = '🥇';
+                else if (index === 1) trophy = '🥈';
+                else if (index === 2) trophy = '🥉';
+                li.innerHTML = `<span>${trophy} ${item.name}</span><span>$${formatCurrency(item.net)}</span><span class="${cls}">${percent.toFixed(2)}%</span>`;
+                listEl.appendChild(li);
+            });
+            // Update player info (for current user)
+            const infoEl = document.getElementById('playerInfo');
+            if (infoEl && players[playerName]) {
+                const playerNet = calculateNetWorth(players[playerName]);
+                // Build holdings summary: list of stock symbols and quantities > 0
+                const holdings = Object.entries(players[playerName].portfolio || {})
+                    .filter(([sym, qty]) => qty > 0)
+                    .map(([sym, qty]) => `${sym}: ${qty.toLocaleString('en-US')}`)
+                    .join(', ');
+                const holdingsText = holdings ? ` • Holdings: ${holdings}` : '';
+                infoEl.innerHTML = `Your Cash: $${formatCurrency(players[playerName].cash)} • Trades: ${players[playerName].trades} • Net Worth: $${formatCurrency(playerNet)}${holdingsText}`;
+            }
+
+            // Display competition code for sharing/joining
+            const codeEl = document.getElementById('competitionCode');
+            if (codeEl && competition && competition.code) {
+                codeEl.textContent = 'Code: ' + competition.code;
+            }
+            // Save state to localStorage
+            saveCompetitionState();
+        }
+
+        // Execute a buy or sell trade for the current user
+        function executeTrade(symbol, type) {
+            if (!competition || !competition.started) {
+                alert('No active competition.');
+                return;
+            }
+            const qtyInput = document.getElementById('qty-' + symbol);
+            let qty = parseInt(qtyInput ? qtyInput.value : '1');
+            if (isNaN(qty) || qty <= 0) {
+                alert('Enter a valid quantity.');
+                return;
+            }
+            if (type === 'buy') {
+                buyStock(playerName, symbol, qty);
+            } else {
+                sellStock(playerName, symbol, qty);
+            }
+            updateLeaderboard();
+            // Update holdings displayed on stock cards after each trade
+            updateHoldings();
+        }
+
+        // Buy stock for a given player
+        function buyStock(name, symbol, qty) {
+            const player = players[name];
+            const price = stocks[symbol].price;
+            const cost = price * qty;
+            if (player.cash >= cost) {
+                player.cash -= cost;
+                player.portfolio[symbol] += qty;
+                player.trades++;
+                // Record trade
+                player.tradeHistory.push({
+                    type: 'buy',
+                    symbol,
+                    qty,
+                    price,
+                    time: currentTime,
+                    priceChange: stocks[symbol].history.length > 1 ? (price - stocks[symbol].history[stocks[symbol].history.length - 2]) / stocks[symbol].history[stocks[symbol].history.length - 2] : 0
+                });
+            } else {
+                alert('Insufficient funds.');
+            }
+        }
+
+        // Sell stock for a given player
+        function sellStock(name, symbol, qty) {
+            const player = players[name];
+            const price = stocks[symbol].price;
+            if (player.portfolio[symbol] >= qty) {
+                player.portfolio[symbol] -= qty;
+                player.cash += price * qty;
+                player.trades++;
+                player.tradeHistory.push({
+                    type: 'sell',
+                    symbol,
+                    qty,
+                    price,
+                    time: currentTime,
+                    priceChange: stocks[symbol].history.length > 1 ? (price - stocks[symbol].history[stocks[symbol].history.length - 2]) / stocks[symbol].history[stocks[symbol].history.length - 2] : 0
+                });
+            } else {
+                alert('Not enough shares to sell.');
+            }
+        }
+
+        // Run bot trades periodically
+        function runBots() {
+            botsList.forEach(botName => {
+                const bot = players[botName];
+                // Simple strategy: pick a random stock
+                const symbols = Object.keys(stocks);
+                const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+                const price = stocks[symbol].price;
+                // Decide to buy or sell based on momentum
+                const change = stocks[symbol].history.length > 1 ? (price - stocks[symbol].history[stocks[symbol].history.length - 2]) / stocks[symbol].history[stocks[symbol].history.length - 2] : 0;
+                if (change > 0.01 && bot.cash > price * 5) {
+                    // Buy a small amount
+                    buyStock(botName, symbol, Math.ceil(5 * Math.random()));
+                } else if (change < -0.01 && bot.portfolio[symbol] > 0) {
+                    // Sell a portion
+                    sellStock(botName, symbol, Math.min(bot.portfolio[symbol], Math.ceil(5 * Math.random())));
+                } else {
+                    // Random small trade
+                    if (Math.random() < 0.5 && bot.cash > price * 3) {
+                        buyStock(botName, symbol, 1);
+                    } else if (bot.portfolio[symbol] > 0) {
+                        sellStock(botName, symbol, 1);
+                    }
+                }
+            });
+            updateLeaderboard();
+        }
+
+        // End the competition, determine winner and archetypes
+        function endCompetition() {
+            if (!competition || !competition.started) return;
+            competition.started = false;
+            // Stop simulation
+            if (running) {
+                toggleSimulation();
+            }
+            if (competitionInterval) {
+                clearInterval(competitionInterval);
+                competitionInterval = null;
+            }
+            if (botInterval) {
+                clearInterval(botInterval);
+                botInterval = null;
+            }
+            // Determine winner
+            const results = Object.values(players).map(p => ({ name: p.name, net: calculateNetWorth(p), trades: p.trades }));
+            results.sort((a, b) => b.net - a.net);
+            const winner = results[0];
+            // Compute archetypes for each player
+            computeArchetypes();
+            // Show winner popup
+            const popup = document.getElementById('winnerPopup');
+            const msgEl = document.getElementById('winnerMessage');
+            const detailsEl = document.getElementById('winnerDetails');
+            const playerEl = document.getElementById('playerResults');
+            const archList = document.getElementById('archetypeList');
+            if (popup && msgEl && detailsEl && playerEl && archList) {
+                /*
+                 * Build a summary for the top five players instead of only
+                 * highlighting the winner and current player. Each entry
+                 * displays the rank, player name, archetype (with icon),
+                 * return and a short blurb explaining how they earned that
+                 * archetype. Returns are colour coded according to
+                 * return‑positive and return‑negative classes. To avoid
+                 * confusing overlays in the light theme we clear the
+                 * previous winner and player details.
+                 */
+                // Set a generic heading for the results
+                msgEl.textContent = 'Competition Results';
+                // Hide the old detail paragraphs
+                detailsEl.textContent = '';
+                playerEl.textContent = '';
+                // Determine the top five performers
+                const topPlayers = results.slice(0, 5);
+                // Build HTML for each player
+                let summaryHtml = '';
+                topPlayers.forEach((item, index) => {
+                    const rank = index + 1;
+                    const percent = ((item.net - startingCash) / startingCash) * 100;
+                    const returnClass = percent > 0 ? 'return-positive' : percent < 0 ? 'return-negative' : 'return-neutral';
+                    const archetype = players[item.name].archetype || '';
+                    const icon = archetypeIcons[archetype] || '';
+                    const desc = archetypeDescriptions[archetype] || '';
+                    summaryHtml += `<div style="margin-bottom:8px;">
+                        <strong>#${rank} ${icon} ${item.name}</strong> – <span>${archetype}</span> (<span class="${returnClass}">${percent.toFixed(2)}%</span>)<br/>
+                        <small>${desc}</small>
+                    </div>`;
+                });
+                // Populate the archetype list container
+                archList.innerHTML = summaryHtml;
+                popup.style.display = 'block';
+            }
+            // Fire confetti
+            if (typeof confetti !== 'undefined') {
+                confetti({
+                    particleCount: 200,
+                    spread: 90,
+                    origin: { y: 0.7 }
+                });
+            }
+            // Hide leaderboard and trade controls
+            const board = document.getElementById('leaderboard');
+            if (board) board.style.display = 'none';
+            document.querySelectorAll('.trade-controls').forEach(el => {
+                el.style.display = 'none';
+            });
+        }
+
+        // Compute trading archetypes based on player trade histories
+        function computeArchetypes() {
+            for (const player of Object.values(players)) {
+                const trades = player.tradeHistory;
+                if (trades.length === 0) {
+                    player.archetype = 'Inactive Trader';
+                    continue;
+                }
+                const tradeCount = trades.length;
+                let totalQty = 0;
+                let posTrades = 0;
+                let negTrades = 0;
+                let volExposure = 0;
+                let trendSum = 0;
+                trades.forEach(tr => {
+                    totalQty += tr.qty;
+                    if (tr.type === 'buy') {
+                        trendSum += tr.priceChange;
+                        const vol = stocks[tr.symbol].volatility;
+                        volExposure += vol * tr.qty;
+                        if (tr.priceChange > 0) posTrades++; else if (tr.priceChange < 0) negTrades++;
+                    }
+                });
+                const avgQty = totalQty / tradeCount;
+                const avgVolatility = volExposure / Math.max(1, totalQty);
+                const trendMetric = trendSum / Math.max(1, posTrades + negTrades);
+                // Classification rules
+                // First check for large volume traders. If the average trade
+                // size is quite high they behaved like a whale.
+                if (avgQty > 10 && tradeCount >= 5) {
+                    player.archetype = 'Whale Trader';
+                } else if (tradeCount > 50) {
+                    // Extremely high trade counts indicate high‑frequency
+                    player.archetype = 'High-Frequency Trader';
+                } else if (tradeCount >= 20 && avgQty <= 3) {
+                    // Frequent but small trades correspond to day trading
+                    player.archetype = 'Day Trader';
+                } else if (avgVolatility > 1.5) {
+                    // Seeking out high volatility names
+                    player.archetype = 'Volatility Rider';
+                } else if (avgVolatility > 1.2) {
+                    player.archetype = 'Aggressive Investor';
+                } else if (trendMetric > 0.02) {
+                    player.archetype = 'Momentum Chaser';
+                } else if (trendMetric < -0.02) {
+                    player.archetype = 'Contrarian Investor';
+                } else if (tradeCount < 5) {
+                    player.archetype = 'Conservative Investor';
+                } else {
+                    player.archetype = 'Balanced Trader';
+                }
+            }
+        }
+
+        // Update the displayed share holdings for the current player on each stock card
+        function updateHoldings() {
+            // Ensure a competition is running and the player exists
+            if (!competition || !players[playerName]) return;
+            for (const sym of Object.keys(stocks)) {
+                const el = document.getElementById('holding-' + sym);
+                if (el) {
+                    const qty = players[playerName].portfolio[sym] || 0;
+                    // Use locale string to add commas for thousands if applicable
+                    el.textContent = qty.toLocaleString('en-US');
+                }
+            }
+        }
+
+        /**
+         * Update chart colours to match the current theme.
+         *
+         * Chart.js does not automatically pick up CSS variables when the
+         * document class changes; as a result, legend labels, axis titles,
+         * ticks and grid lines remain white when the light theme is active.
+         * This helper reads the CSS variables defined for text and border
+         * colours and applies them to the chart options. It should be
+         * called after the chart is created and whenever the theme is
+         * toggled.
+         */
+        function updateChartColors() {
+            // Guard against chart not yet initialised
+            if (!chart) return;
+            const style = getComputedStyle(document.body);
+            const textPrimary = style.getPropertyValue('--text-primary').trim() || '#1a1a2e';
+            const textSecondary = style.getPropertyValue('--text-secondary').trim() || '#52577a';
+            const borderColor = style.getPropertyValue('--border-color').trim() || 'rgba(0,0,0,0.1)';
+            const cardBg = style.getPropertyValue('--card-bg').trim();
+            // Legend text
+            chart.options.plugins.legend.labels.color = textPrimary;
+            // Axis titles and ticks
+            chart.options.scales.x.title.color = textSecondary;
+            chart.options.scales.x.ticks.color = textSecondary;
+            chart.options.scales.x.grid.color = borderColor;
+            chart.options.scales.y.title.color = textSecondary;
+            chart.options.scales.y.ticks.color = textSecondary;
+            chart.options.scales.y.grid.color = borderColor;
+            // Tooltip colours
+            chart.options.plugins.tooltip.titleColor = textPrimary;
+            chart.options.plugins.tooltip.bodyColor = textPrimary;
+            if (cardBg) {
+                // Use the card background colour for tooltip backgrounds to
+                // maintain contrast against both dark and light themes
+                chart.options.plugins.tooltip.backgroundColor = cardBg;
+            }
+            chart.update();
+        }
+
+        // Prompt user to set up a competition on page load
+        function initCompetitionPrompt() {
+            // Ask for player name
+            playerName = prompt('Enter your player name:', 'Player');
+            if (!playerName || playerName.trim() === '') {
+                playerName = 'Player';
+            }
+            const botsCount = parseInt(prompt('Enter number of bots you want to play with (0 for none). Leave blank for multiplayer:', '0'), 10);
+            // If botsCount is NaN, treat as multiplayer (0 bots)
+            if (isNaN(botsCount) || botsCount === 0) {
+                const create = confirm('Would you like to create a new competition? Click OK to create, Cancel to join an existing one.');
+                if (create) {
+                    const duration = parseInt(prompt('Enter competition duration in minutes:', '5'), 10) || 5;
+                    createCompetition(0, duration);
+                    alert('Competition created! Share this code to join: ' + competition.code);
+                    startCompetition();
+                } else {
+                    const code = prompt('Enter the competition code to join:');
+                    if (code && joinCompetition(code)) {
+                        competition.code = code;
+                        alert('Joined competition. Waiting for it to start...');
+                        // Start immediately for demo
+                        const duration = parseInt(prompt('Enter remaining duration in minutes:', '5'), 10) || 5;
+                        competition.duration = duration * 60 * 1000;
+                        startCompetition();
+                    }
+                }
+            } else {
+                // Single-player with bots
+                const duration = parseInt(prompt('Enter competition duration in minutes:', '5'), 10) || 5;
+                createCompetition(botsCount, duration);
+                startCompetition();
+            }
+        }
+
+        // Initialize everything
+        window.addEventListener('DOMContentLoaded', () => {
+            initializeStockCards();
+            initializeChart();
+            // Prompt user to set up competition and bots
+            initCompetitionPrompt();
+        });
+
+        // Toggle between light and dark themes
+        function toggleTheme() {
+            document.body.classList.toggle('light-theme');
+            // After toggling, update chart colours to match the new theme
+            updateChartColors();
+        }
+
+        // Handle joining a competition from the leaderboard join section
+        function handleJoinCode() {
+            // Read code from input field
+            const inputEl = document.getElementById('joinCodeInput');
+            if (!inputEl) return;
+            const code = inputEl.value.trim().toUpperCase();
+            if (!code) {
+                alert('Please enter a competition code.');
+                return;
+            }
+            // Prompt for player name if not already set
+            if (!playerName || playerName.trim() === '') {
+                let name = prompt('Enter your player name:', 'Player');
+                if (!name || name.trim() === '') name = 'Player';
+                playerName = name.trim();
+            }
+            // Attempt to join the competition
+            if (joinCompetition(code)) {
+                // Ask for remaining duration (minutes) if necessary
+                const dur = parseInt(prompt('Enter remaining competition duration in minutes:', '5'), 10) || 5;
+                competition.duration = dur * 60 * 1000;
+                // Notify user and start competition (host restrictions handled by startCompetition)
+                alert('Joined competition! Starting...');
+                startCompetition();
+            }
+        }
+    </script>
+</body>
+</html>
