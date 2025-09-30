@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Parametric Tiny House Fabricator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles/tiny-house.css" />
+</head>
+<body>
+    <aside class="sidebar">
+        <h1>Parametric Tiny House Fabricator</h1>
+        <p class="description">
+            Auto-generate thousands of bespoke micro-homes optimized for cost, sustainability, energy performance, and climate resilience.
+            Tune constraints, analyze build intelligence, and export fabrication-ready data alongside immersive visualization.
+        </p>
+
+        <div class="control-group" data-collapsible>
+            <header>
+                <h2>Site & Orientation</h2>
+                <span>Contextual Intelligence</span>
+            </header>
+            <div class="group-content">
+                <label>
+                    Project Location
+                    <input type="text" id="location" placeholder="e.g. Seattle, WA" />
+                </label>
+                <label>
+                    Lot Dimensions (ft)
+                    <div class="dual-input">
+                        <input type="number" id="lotWidth" min="20" value="60" />
+                        <input type="number" id="lotLength" min="20" value="100" />
+                    </div>
+                </label>
+                <label>
+                    Solar Orientation Preference
+                    <select id="orientation">
+                        <option value="balanced">Balanced</option>
+                        <option value="southern">Max Southern Exposure</option>
+                        <option value="eastern">Morning Light</option>
+                        <option value="western">Sunset Views</option>
+                    </select>
+                </label>
+                <label>
+                    Environmental Setting
+                    <select id="environment">
+                        <option value="auto">Auto-detect</option>
+                        <option value="urban">Urban</option>
+                        <option value="coastal">Coastal</option>
+                        <option value="forest">Forest</option>
+                        <option value="desert">Desert</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        <div class="control-group" data-collapsible>
+            <header>
+                <h2>Program & Performance</h2>
+                <span>Spatial DNA</span>
+            </header>
+            <div class="group-content">
+                <label>
+                    Living Area Target (sqft)
+                    <input type="number" id="area" min="200" value="420" />
+                </label>
+                <label>
+                    Floors
+                    <select id="floors">
+                        <option value="1">Single Level</option>
+                        <option value="2">Two Story</option>
+                    </select>
+                </label>
+                <label>
+                    Rooms
+                    <div class="dual-input">
+                        <input type="number" id="bedrooms" min="1" value="2" />
+                        <input type="number" id="bathrooms" min="1" value="1" />
+                    </div>
+                </label>
+                <label>
+                    Sustainability Priority
+                    <select id="sustainability">
+                        <option value="balanced">Balanced Performance</option>
+                        <option value="carbon">Ultra Low-Carbon</option>
+                        <option value="energy">Net-Positive Energy</option>
+                        <option value="luxury">Luxury Finishes</option>
+                    </select>
+                </label>
+                <label>
+                    Envelope Strategy
+                    <select id="envelope">
+                        <option value="standard">Standard SIP Panels</option>
+                        <option value="hempcrete">Hempcrete Hybrid</option>
+                        <option value="recycled">Recycled Polymer Shell</option>
+                        <option value="mass-timber">Mass Timber Ribs</option>
+                    </select>
+                </label>
+                <div class="slider-input">
+                    <label style="flex: 1 1 auto;">
+                        Design Variants
+                        <span class="badge" id="variantCountLabel">12 layouts queued</span>
+                    </label>
+                    <input type="range" id="variantCount" min="3" max="24" step="3" value="12" />
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group" data-collapsible>
+            <header>
+                <h2>Systems & Fabrication</h2>
+                <span>Build Logistics</span>
+            </header>
+            <div class="group-content">
+                <label>
+                    Energy System
+                    <select id="energySystem">
+                        <option value="hybrid">Solar + Battery Hybrid</option>
+                        <option value="geothermal">Geothermal Loop</option>
+                        <option value="grid">High-Efficiency Grid Tie</option>
+                        <option value="microgrid">Microgrid Ready</option>
+                    </select>
+                </label>
+                <label>
+                    Water Strategy
+                    <select id="waterStrategy">
+                        <option value="rainwater">Rainwater Harvesting + Greywater</option>
+                        <option value="municipal">Municipal Connection</option>
+                        <option value="offgrid">Off-Grid Atmospheric</option>
+                    </select>
+                </label>
+                <label>
+                    Printing Fabricator
+                    <select id="fabricator">
+                        <option value="gantry">Gantry Polymer-Concrete</option>
+                        <option value="arm">Robotic Arm Extrusion</option>
+                        <option value="swarm">Swarm Micro-Extruders</option>
+                    </select>
+                </label>
+                <label>
+                    Finish Palette
+                    <select id="palette">
+                        <option value="minimal">Minimal Nordic</option>
+                        <option value="industrial">Industrial Loft</option>
+                        <option value="organic">Organic Earth</option>
+                        <option value="futuristic">Futuristic Metallic</option>
+                    </select>
+                </label>
+                <label>
+                    Budget Ceiling (USD)
+                    <input type="number" id="budget" min="50000" value="165000" />
+                </label>
+            </div>
+        </div>
+
+        <button class="primary-button" id="generate">⚙️ Generate Intelligent Layouts</button>
+
+        <div class="design-list" id="designList"></div>
+    </aside>
+
+    <main class="viewport">
+        <div class="viewport-header">
+            <h2 id="activeDesignTitle">Awaiting Generation</h2>
+            <div class="viewport-tabs">
+                <button data-tab="overview" class="active">Overview</button>
+                <button data-tab="materials">Materials & Cost</button>
+                <button data-tab="systems">Systems</button>
+                <button data-tab="climate">Climate Risk</button>
+            </div>
+        </div>
+        <div id="render-wrapper">
+            <section id="render-container">
+                <canvas id="three-canvas"></canvas>
+                <div class="overlays">
+                    <label class="lens-toggle"><input type="checkbox" id="toggleRoof" checked /> Show Roof</label>
+                    <label class="lens-toggle"><input type="checkbox" id="toggleWalls" checked /> Solid Walls</label>
+                    <label class="lens-toggle"><input type="checkbox" id="toggleStructure" checked /> Structural Frame</label>
+                    <label class="lens-toggle"><input type="checkbox" id="toggleSystems" checked /> MEP Systems</label>
+                </div>
+            </section>
+            <section class="info-panel active" data-tab-panel="overview">
+                <h3>Design Synopsis</h3>
+                <div class="metrics-grid">
+                    <div class="hero-metric">
+                        <h4>Gross Area</h4>
+                        <span id="metricArea">0 sqft</span>
+                    </div>
+                    <div class="hero-metric">
+                        <h4>Embodied Carbon</h4>
+                        <span id="metricCarbon">— kg CO₂e</span>
+                    </div>
+                    <div class="hero-metric">
+                        <h4>Energy Intensity</h4>
+                        <span id="metricEnergy">— kWh/yr</span>
+                    </div>
+                </div>
+                <div class="info-section">
+                    <h4>Spatial Composition</h4>
+                    <div class="info-grid" id="layoutSummary"></div>
+                </div>
+                <div class="info-section">
+                    <h4>Performance Highlights</h4>
+                    <div class="pill-group" id="highlightPills"></div>
+                </div>
+                <div class="info-section">
+                    <h4>Market Intelligence</h4>
+                    <div class="info-grid" id="marketInsights"></div>
+                </div>
+                <div class="simulation-controls">
+                    <button class="secondary-button" id="simulatePrint">🎥 Play Printing Simulation</button>
+                    <button class="secondary-button" id="recordVideo">⬇️ Export Simulation Video</button>
+                    <div class="status-bar" id="simulationStatus">Simulation idle.</div>
+                    <div class="video-preview" id="videoPreview" hidden>
+                        <strong>Printable Simulation Capture</strong>
+                        <video id="simulationVideo" controls></video>
+                        <a id="downloadLink" class="secondary-button" download="tiny-house-simulation.webm">Download Video</a>
+                    </div>
+                </div>
+            </section>
+            <section class="info-panel" data-tab-panel="materials">
+                <h3>Fabrication Economics</h3>
+                <div class="info-section">
+                    <h4>Bill of Materials</h4>
+                    <table id="materialsTable">
+                        <thead>
+                            <tr>
+                                <th>Material</th>
+                                <th>Quantity</th>
+                                <th>Unit Cost</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="info-section">
+                    <h4>Fabrication Timeline</h4>
+                    <div class="info-grid" id="timelineInsights"></div>
+                </div>
+                <div class="info-section">
+                    <h4>Financial Projection</h4>
+                    <div class="info-grid" id="financialInsights"></div>
+                </div>
+            </section>
+            <section class="info-panel" data-tab-panel="systems">
+                <h3>Systems Coordination</h3>
+                <div class="info-section">
+                    <h4>Mechanical | Electrical | Plumbing</h4>
+                    <div class="info-grid" id="systemsInsights"></div>
+                </div>
+                <div class="info-section">
+                    <h4>Envelope & Comfort</h4>
+                    <div class="info-grid" id="envelopeInsights"></div>
+                </div>
+            </section>
+            <section class="info-panel" data-tab-panel="climate">
+                <h3>Climate Resilience & Risk</h3>
+                <div class="info-section">
+                    <h4>Hazard Outlook</h4>
+                    <div class="climate-risk" id="climateRisk"></div>
+                </div>
+                <div class="info-section">
+                    <h4>Adaptive Strategies</h4>
+                    <div class="info-grid" id="climateStrategies"></div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script type="module" src="scripts/tiny-house.js"></script>
+</body>
+</html>
