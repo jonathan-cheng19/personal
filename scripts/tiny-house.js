@@ -246,6 +246,9 @@ function buildDesign(design) {
     );
     floor.receiveShadow = true;
     floor.position.y = 0;
+    floor.userData.isSlab = true;
+    floor.userData.baseY = floor.position.y;
+    floor.userData.baseScaleY = floor.scale.y;
     lensGroups.walls.add(floor);
 
     design.rooms.forEach((room) => {
@@ -697,12 +700,16 @@ function playSimulation(record = false) {
     const start = performance.now();
     const roof = lensGroups.roof.children[0];
     const initialRoofY = roof ? roof.position.y : 0;
-    const walls = lensGroups.walls.children.filter((child) => child !== roof);
+    const animatedWalls = lensGroups.walls.children.filter((child) => {
+        const data = child.userData || {};
+        return data.room && !data.isSlab;
+    });
+    const slab = lensGroups.walls.children.find((child) => child.userData?.isSlab);
 
     const animateStep = (time) => {
         const elapsed = Math.min(time - start, totalDuration);
         const progress = elapsed / totalDuration;
-        walls.forEach((wall) => {
+        animatedWalls.forEach((wall) => {
             const baseScale = wall.userData.originalScaleY ?? 1;
             const eased = Math.max(0.01, progress);
             wall.scale.y = baseScale * eased;
@@ -718,10 +725,14 @@ function playSimulation(record = false) {
             if (record && state.mediaRecorder) state.mediaRecorder.stop();
         }
     };
-    walls.forEach((wall) => {
+    animatedWalls.forEach((wall) => {
         wall.scale.y = 0.01;
         wall.position.y = 0.01;
     });
+    if (slab) {
+        slab.scale.y = slab.userData?.baseScaleY ?? 1;
+        slab.position.y = slab.userData?.baseY ?? 0;
+    }
     ui.simulationStatus.textContent = record ? "Recording simulation…" : "Simulating 3D printing sequence…";
     state.animation = requestAnimationFrame(animateStep);
 }
