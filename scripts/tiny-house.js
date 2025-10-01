@@ -6,6 +6,10 @@ const ui = {
     generate: document.getElementById("generate"),
     variantCount: document.getElementById("variantCount"),
     variantLabel: document.getElementById("variantCountLabel"),
+    headerVariantBadge: document.getElementById("headerVariantBadge"),
+    headerStatus: document.getElementById("headerStatus"),
+    headerEnvironment: document.getElementById("headerEnvironment"),
+    environmentSelect: document.getElementById("environment"),
     designList: document.getElementById("designList"),
     activeDesignTitle: document.getElementById("activeDesignTitle"),
     layoutSummary: document.getElementById("layoutSummary"),
@@ -27,6 +31,9 @@ const ui = {
     videoPreview: document.getElementById("videoPreview"),
     simulationVideo: document.getElementById("simulationVideo"),
     downloadLink: document.getElementById("downloadLink"),
+    generationProgress: document.getElementById("generationProgress"),
+    generationProgressFill: document.getElementById("generationProgressFill"),
+    generationProgressLabel: document.getElementById("generationProgressLabel"),
 };
 
 const lensToggles = {
@@ -36,8 +43,105 @@ const lensToggles = {
     systems: document.getElementById("toggleSystems"),
 };
 
-ui.variantCount.addEventListener("input", () => {
-    ui.variantLabel.textContent = `${ui.variantCount.value} layouts queued`;
+function updateVariantCountLabel() {
+    const label = `${ui.variantCount.value} layouts queued`;
+    ui.variantLabel.textContent = label;
+    if (ui.headerVariantBadge) {
+        ui.headerVariantBadge.textContent = ui.variantCount.value;
+    }
+}
+
+function formatEnvironmentLabel(value) {
+    const option = ui.environmentSelect?.querySelector(`option[value="${value}"]`);
+    if (option) return option.textContent;
+    if (!value) return "—";
+    return value
+        .split(/[-_\s]/)
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+}
+
+function setEnvironmentLabel(value) {
+    if (ui.headerEnvironment) {
+        ui.headerEnvironment.textContent = formatEnvironmentLabel(value);
+    }
+}
+
+function setSimulationStatus(message) {
+    ui.simulationStatus.textContent = message;
+    if (ui.headerStatus) {
+        ui.headerStatus.textContent = message;
+    }
+}
+
+const yieldToFrame = () =>
+    new Promise((resolve) =>
+        (typeof requestAnimationFrame === "function" ? requestAnimationFrame(resolve) : setTimeout(resolve, 16))
+    );
+
+function showGenerationProgress(total) {
+    if (!ui.generationProgress) return;
+    ui.generationProgress.hidden = false;
+    ui.generationProgress.classList.remove("success", "error");
+    if (ui.generationProgressFill) {
+        ui.generationProgressFill.style.width = "0%";
+    }
+    if (ui.generationProgressLabel) {
+        ui.generationProgressLabel.textContent = total
+            ? `Synthesizing layout 0 of ${total}…`
+            : "Synthesizing layouts…";
+    }
+}
+
+function updateGenerationProgress(current, total) {
+    if (!ui.generationProgress || !ui.generationProgressFill) return;
+    const percent = total ? Math.min(98, Math.max(0, Math.round((current / total) * 100))) : 0;
+    ui.generationProgressFill.style.width = `${percent}%`;
+    if (ui.generationProgressLabel) {
+        ui.generationProgressLabel.textContent = total
+            ? `Synthesizing layout ${current} of ${total}…`
+            : `Synthesizing layout ${current}…`;
+    }
+    setSimulationStatus(
+        total ? `Synthesizing layout ${current} of ${total}…` : `Synthesizing layout ${current}…`
+    );
+}
+
+function completeGenerationProgress({ message, success = true } = {}) {
+    if (!ui.generationProgress) return;
+    ui.generationProgress.classList.remove("success", "error");
+    if (success) {
+        ui.generationProgress.classList.add("success");
+        if (ui.generationProgressFill) {
+            ui.generationProgressFill.style.width = "100%";
+        }
+    } else {
+        ui.generationProgress.classList.add("error");
+        if (ui.generationProgressFill) {
+            ui.generationProgressFill.style.width = "12%";
+        }
+    }
+    if (ui.generationProgressLabel && message) {
+        ui.generationProgressLabel.textContent = message;
+    }
+    setTimeout(() => {
+        if (!ui.generationProgress) return;
+        ui.generationProgress.hidden = true;
+        ui.generationProgress.classList.remove("success", "error");
+        if (ui.generationProgressFill) {
+            ui.generationProgressFill.style.width = "0%";
+        }
+    }, success ? 1200 : 2200);
+}
+
+ui.variantCount.addEventListener("input", updateVariantCountLabel);
+
+updateVariantCountLabel();
+setEnvironmentLabel(ui.environmentSelect?.value);
+
+ui.environmentSelect?.addEventListener("change", (event) => {
+    setEnvironmentLabel(event.target.value);
 });
 
 document.querySelectorAll("[data-collapsible]").forEach((group) => {
@@ -148,6 +252,15 @@ const state = {
 
 const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+function randomUint32() {
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+        const buffer = new Uint32Array(1);
+        crypto.getRandomValues(buffer);
+        return buffer[0];
+    }
+    return Math.floor(Math.random() * 0xffffffff);
+}
+
 function seededRandom(seed) {
     let t = seed += 0x6d2b79f5;
     t = Math.imul(t ^ (t >>> 15), t | 1);
@@ -246,6 +359,9 @@ function buildDesign(design) {
     );
     floor.receiveShadow = true;
     floor.position.y = 0;
+    floor.userData.isSlab = true;
+    floor.userData.baseY = floor.position.y;
+    floor.userData.baseScaleY = floor.scale.y;
     lensGroups.walls.add(floor);
 
     design.rooms.forEach((room) => {
@@ -568,6 +684,8 @@ function updateEnvironment(env) {
     };
     const color = palette[env] || 0x14532d;
     ground.material.color.setHex(color);
+    state.environment = env;
+    setEnvironmentLabel(env);
 
     if (env === "urban") {
         const skyline = new THREE.Group();
@@ -607,60 +725,91 @@ function updateEnvironment(env) {
 async function generateDesigns() {
     ui.generate.disabled = true;
     ui.generate.textContent = "⏳ Synthesizing";
-    state.designs = [];
-    ui.designList.innerHTML = "";
+    setSimulationStatus("Synthesizing intelligent layout variants…");
 
-    const params = {
-        location: document.getElementById("location").value,
-        lotWidth: Number(document.getElementById("lotWidth").value),
-        lotLength: Number(document.getElementById("lotLength").value),
-        orientation: document.getElementById("orientation").value,
-        environment: document.getElementById("environment").value,
-        area: Number(document.getElementById("area").value) / 10.7639,
-        floors: Number(document.getElementById("floors").value),
-        bedrooms: Number(document.getElementById("bedrooms").value),
-        bathrooms: Number(document.getElementById("bathrooms").value),
-        sustainability: document.getElementById("sustainability").value,
-        envelope: document.getElementById("envelope").value,
-        variantCount: Number(document.getElementById("variantCount").value),
-        energySystem: document.getElementById("energySystem").value,
-        waterStrategy: document.getElementById("waterStrategy").value,
-        fabricator: document.getElementById("fabricator").value,
-        palette: document.getElementById("palette").value,
-        budget: Number(document.getElementById("budget").value),
-    };
+    try {
+        state.designs = [];
+        ui.designList.innerHTML = "";
 
-    const location = await geocodeLocation(params.location);
-    const climate = location ? await fetchClimate(location.latitude, location.longitude) : null;
-    if (climate) climate.seaLevel = params.environment === "coastal" ? "coastal" : undefined;
-    const environment = environmentFromLocation(location, params.environment);
-    updateEnvironment(environment);
+        const params = {
+            location: document.getElementById("location").value,
+            lotWidth: Number(document.getElementById("lotWidth").value),
+            lotLength: Number(document.getElementById("lotLength").value),
+            orientation: document.getElementById("orientation").value,
+            environment: document.getElementById("environment").value,
+            area: Number(document.getElementById("area").value) / 10.7639,
+            floors: Number(document.getElementById("floors").value),
+            bedrooms: Number(document.getElementById("bedrooms").value),
+            bathrooms: Number(document.getElementById("bathrooms").value),
+            sustainability: document.getElementById("sustainability").value,
+            envelope: document.getElementById("envelope").value,
+            variantCount: Number(document.getElementById("variantCount").value),
+            energySystem: document.getElementById("energySystem").value,
+            waterStrategy: document.getElementById("waterStrategy").value,
+            fabricator: document.getElementById("fabricator").value,
+            palette: document.getElementById("palette").value,
+            budget: Number(document.getElementById("budget").value),
+        };
 
-    for (let i = 0; i < params.variantCount; i++) {
-        const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-        const design = generateLayout(seed, params);
-        state.designs.push({ design, seed, analytics: computeAnalytics(design, { climate, location }) });
-    }
+        showGenerationProgress(params.variantCount);
 
-    ui.designList.innerHTML = state.designs
-        .map(
-            (entry, idx) => `
+        const location = await geocodeLocation(params.location);
+        const climate = location ? await fetchClimate(location.latitude, location.longitude) : null;
+        if (climate) climate.seaLevel = params.environment === "coastal" ? "coastal" : undefined;
+        const environment = environmentFromLocation(location, params.environment);
+        updateEnvironment(environment);
+
+        for (let i = 0; i < params.variantCount; i++) {
+            const seed = randomUint32();
+            const design = generateLayout(seed, params);
+            state.designs.push({ design, seed, analytics: computeAnalytics(design, { climate, location }) });
+            updateGenerationProgress(i + 1, params.variantCount);
+            // Ensure the UI reflects progress during intensive synthesis loops.
+            // eslint-disable-next-line no-await-in-loop
+            await yieldToFrame();
+        }
+
+        if (!state.designs.length) {
+            throw new Error("No designs generated");
+        }
+
+        ui.designList.innerHTML = state.designs
+            .map(
+                (entry, idx) => `
             <div class="design-item" data-index="${idx}">
                 <strong>${entry.design.id}</strong>
                 <span>${entry.analytics.programProfile}</span>
                 <span>${Math.round(entry.analytics.areaSqft).toLocaleString()} sqft · ${entry.design.features.roofType}</span>
             </div>
         `
-        )
-        .join("");
+            )
+            .join("");
 
-    ui.designList.querySelectorAll(".design-item").forEach((item) => {
-        item.addEventListener("click", () => activateDesign(Number(item.dataset.index)));
-    });
+        ui.designList.querySelectorAll(".design-item").forEach((item) => {
+            item.addEventListener("click", () => activateDesign(Number(item.dataset.index)));
+        });
 
-    activateDesign(0);
-    ui.generate.disabled = false;
-    ui.generate.textContent = "⚙️ Generate Intelligent Layouts";
+        activateDesign(0);
+        completeGenerationProgress({
+            message: "Layouts ready. Select a variant to inspect.",
+            success: true,
+        });
+        const variantCount = state.designs.length;
+        const descriptor = variantCount === 1 ? "layout" : "layouts";
+        setSimulationStatus(`Generated ${variantCount} intelligent ${descriptor}.`);
+    } catch (error) {
+        console.error("Generation error", error);
+        setSimulationStatus("Generation failed. Adjust parameters and try again.");
+        ui.designList.innerHTML =
+            '<div class="design-item error" role="alert">Unable to generate layouts. Please review inputs and retry.</div>';
+        completeGenerationProgress({
+            message: "Generation failed. Review the inputs and retry.",
+            success: false,
+        });
+    } finally {
+        ui.generate.disabled = false;
+        ui.generate.textContent = "⚙️ Generate Intelligent Layouts";
+    }
 }
 
 function activateDesign(index) {
@@ -672,7 +821,7 @@ function activateDesign(index) {
     state.activeDesign = selected;
     buildDesign(selected.design);
     describeDesign(selected.design, selected.analytics);
-    ui.simulationStatus.textContent = `Ready to simulate ${selected.design.id}.`;
+    setSimulationStatus(`Ready to simulate ${selected.design.id}.`);
 }
 
 ui.generate.addEventListener("click", generateDesigns);
@@ -697,12 +846,16 @@ function playSimulation(record = false) {
     const start = performance.now();
     const roof = lensGroups.roof.children[0];
     const initialRoofY = roof ? roof.position.y : 0;
-    const walls = lensGroups.walls.children.filter((child) => child !== roof);
+    const animatedWalls = lensGroups.walls.children.filter((child) => {
+        const data = child.userData || {};
+        return data.room && !data.isSlab;
+    });
+    const slab = lensGroups.walls.children.find((child) => child.userData?.isSlab);
 
     const animateStep = (time) => {
         const elapsed = Math.min(time - start, totalDuration);
         const progress = elapsed / totalDuration;
-        walls.forEach((wall) => {
+        animatedWalls.forEach((wall) => {
             const baseScale = wall.userData.originalScaleY ?? 1;
             const eased = Math.max(0.01, progress);
             wall.scale.y = baseScale * eased;
@@ -714,15 +867,19 @@ function playSimulation(record = false) {
         if (elapsed < totalDuration) {
             state.animation = requestAnimationFrame(animateStep);
         } else {
-            ui.simulationStatus.textContent = `Simulation complete for ${state.activeDesign.design.id}.`;
+            setSimulationStatus(`Simulation complete for ${state.activeDesign.design.id}.`);
             if (record && state.mediaRecorder) state.mediaRecorder.stop();
         }
     };
-    walls.forEach((wall) => {
+    animatedWalls.forEach((wall) => {
         wall.scale.y = 0.01;
         wall.position.y = 0.01;
     });
-    ui.simulationStatus.textContent = record ? "Recording simulation…" : "Simulating 3D printing sequence…";
+    if (slab) {
+        slab.scale.y = slab.userData?.baseScaleY ?? 1;
+        slab.position.y = slab.userData?.baseY ?? 0;
+    }
+    setSimulationStatus(record ? "Recording simulation…" : "Simulating 3D printing sequence…");
     state.animation = requestAnimationFrame(animateStep);
 }
 
@@ -747,7 +904,7 @@ ui.recordVideo.addEventListener("click", async () => {
         ui.simulationVideo.src = url;
         ui.downloadLink.href = url;
         ui.videoPreview.hidden = false;
-        ui.simulationStatus.textContent = "Simulation video ready.";
+        setSimulationStatus("Simulation video ready.");
     };
     state.mediaRecorder = mediaRecorder;
     mediaRecorder.start();
@@ -755,4 +912,6 @@ ui.recordVideo.addEventListener("click", async () => {
 });
 
 applyLensVisibility();
-ui.simulationStatus.textContent = "Awaiting design synthesis.";
+setSimulationStatus("Awaiting design synthesis.");
+updateVariantCountLabel();
+setEnvironmentLabel(ui.environmentSelect?.value ?? state.environment);

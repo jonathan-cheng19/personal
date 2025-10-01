@@ -10,14 +10,40 @@
     <link rel="stylesheet" href="styles/tiny-house.css" />
 </head>
 <body>
-    <aside class="sidebar">
-        <h1>Parametric Tiny House Fabricator</h1>
-        <p class="description">
-            Auto-generate thousands of bespoke micro-homes optimized for cost, sustainability, energy performance, and climate resilience.
-            Tune constraints, analyze build intelligence, and export fabrication-ready data alongside immersive visualization.
-        </p>
+    <header class="app-header">
+        <div class="brand">
+            <div class="brand-mark">⌂</div>
+            <div>
+                <h1>Parametric Tiny House Fabricator</h1>
+                <p>Generative micro-home studio aligning cost, climate resilience, and fabrication logistics.</p>
+            </div>
+        </div>
+        <div class="header-insights">
+            <div class="header-tile">
+                <span class="label">Simulation Status</span>
+                <strong id="headerStatus">Awaiting design synthesis.</strong>
+            </div>
+            <div class="header-tile">
+                <span class="label">Queued Variants</span>
+                <strong id="headerVariantBadge">12</strong>
+            </div>
+            <div class="header-tile">
+                <span class="label">Environment Lens</span>
+                <strong id="headerEnvironment">Auto-detect</strong>
+            </div>
+        </div>
+    </header>
 
-        <div class="control-group" data-collapsible>
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="sidebar-intro">
+                <span class="status-pill">AI-assisted prefab workflows</span>
+                <p class="description">
+                    Auto-generate bespoke micro-homes optimized for cost, sustainability, energy performance, and climate resilience. Tune constraints, analyze build intelligence, and export fabrication-ready data alongside immersive visualization.
+                </p>
+            </div>
+
+            <div class="control-group" data-collapsible>
             <header>
                 <h2>Site & Orientation</h2>
                 <span>Contextual Intelligence</span>
@@ -54,9 +80,9 @@
                     </select>
                 </label>
             </div>
-        </div>
+            </div>
 
-        <div class="control-group" data-collapsible>
+            <div class="control-group" data-collapsible>
             <header>
                 <h2>Program & Performance</h2>
                 <span>Spatial DNA</span>
@@ -106,9 +132,9 @@
                     <input type="range" id="variantCount" min="3" max="24" step="3" value="12" />
                 </div>
             </div>
-        </div>
+            </div>
 
-        <div class="control-group" data-collapsible>
+            <div class="control-group" data-collapsible>
             <header>
                 <h2>Systems & Fabrication</h2>
                 <span>Build Logistics</span>
@@ -153,14 +179,22 @@
                     <input type="number" id="budget" min="50000" value="165000" />
                 </label>
             </div>
-        </div>
+            </div>
 
-        <button class="primary-button" id="generate">⚙️ Generate Intelligent Layouts</button>
+            <button class="primary-button" id="generate">⚙️ Generate Intelligent Layouts</button>
+            <div class="generation-progress" id="generationProgress" hidden>
+                <div class="progress-bar" aria-hidden="true">
+                    <div class="progress-fill" id="generationProgressFill"></div>
+                </div>
+                <div class="progress-label" id="generationProgressLabel" role="status" aria-live="polite">
+                    Preparing synthesis…
+                </div>
+            </div>
 
-        <div class="design-list" id="designList"></div>
-    </aside>
+            <div class="design-list" id="designList"></div>
+        </aside>
 
-    <main class="viewport">
+        <main class="viewport">
         <div class="viewport-header">
             <h2 id="activeDesignTitle">Awaiting Generation</h2>
             <div class="viewport-tabs">
@@ -267,7 +301,8 @@
                 </div>
             </section>
         </div>
-    </main>
+        </main>
+    </div>
 
     <script type="module" src="scripts/tiny-house.js"></script>
 </body>
