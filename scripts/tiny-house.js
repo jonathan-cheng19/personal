@@ -775,9 +775,7 @@ async function generateDesigns() {
 
     try {
         state.designs = [];
-        if (ui.designList) {
-            ui.designList.innerHTML = "";
-        }
+        if (ui.designList) ui.designList.innerHTML = "";
 
         const params = {
             location: document.getElementById("location").value,
