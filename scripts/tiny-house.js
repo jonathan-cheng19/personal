@@ -287,17 +287,25 @@ function clearGroups() {
 }
 
 function applyLensVisibility() {
-    lensGroups.roof.visible = lensToggles.roof.checked;
-    lensGroups.walls.children.forEach((mesh) => {
-        mesh.material.opacity = lensToggles.walls.checked ? 0.95 : 0.25;
-        mesh.material.transparent = true;
-        mesh.material.needsUpdate = true;
-    });
-    lensGroups.structure.visible = lensToggles.structure.checked;
-    lensGroups.systems.visible = lensToggles.systems.checked;
+    if (lensToggles.roof) {
+        lensGroups.roof.visible = lensToggles.roof.checked;
+    }
+    if (lensToggles.walls) {
+        lensGroups.walls.children.forEach((mesh) => {
+            mesh.material.opacity = lensToggles.walls.checked ? 0.95 : 0.25;
+            mesh.material.transparent = true;
+            mesh.material.needsUpdate = true;
+        });
+    }
+    if (lensToggles.structure) {
+        lensGroups.structure.visible = lensToggles.structure.checked;
+    }
+    if (lensToggles.systems) {
+        lensGroups.systems.visible = lensToggles.systems.checked;
+    }
 }
 
-Object.values(lensToggles).forEach((toggle) => toggle.addEventListener("change", applyLensVisibility));
+Object.values(lensToggles).forEach((toggle) => toggle?.addEventListener("change", applyLensVisibility));
 
 const state = {
     designs: [],
