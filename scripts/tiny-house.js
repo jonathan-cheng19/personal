@@ -6,6 +6,10 @@ const ui = {
     generate: document.getElementById("generate"),
     variantCount: document.getElementById("variantCount"),
     variantLabel: document.getElementById("variantCountLabel"),
+    headerVariantBadge: document.getElementById("headerVariantBadge"),
+    headerStatus: document.getElementById("headerStatus"),
+    headerEnvironment: document.getElementById("headerEnvironment"),
+    environmentSelect: document.getElementById("environment"),
     designList: document.getElementById("designList"),
     activeDesignTitle: document.getElementById("activeDesignTitle"),
     layoutSummary: document.getElementById("layoutSummary"),
@@ -36,8 +40,42 @@ const lensToggles = {
     systems: document.getElementById("toggleSystems"),
 };
 
-ui.variantCount.addEventListener("input", () => {
-    ui.variantLabel.textContent = `${ui.variantCount.value} layouts queued`;
+function updateVariantCountLabel() {
+    const label = `${ui.variantCount.value} layouts queued`;
+    ui.variantLabel.textContent = label;
+    if (ui.headerVariantBadge) {
+        ui.headerVariantBadge.textContent = ui.variantCount.value;
+    }
+}
+
+function formatEnvironmentLabel(value) {
+    const option = ui.environmentSelect?.querySelector(`option[value="${value}"]`);
+    if (option) return option.textContent;
+    if (!value) return "—";
+    return value
+        .split(/[-_\s]/)
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+}
+
+function setEnvironmentLabel(value) {
+    if (ui.headerEnvironment) {
+        ui.headerEnvironment.textContent = formatEnvironmentLabel(value);
+    }
+}
+
+function setSimulationStatus(message) {
+    ui.simulationStatus.textContent = message;
+    if (ui.headerStatus) {
+        ui.headerStatus.textContent = message;
+    }
+}
+
+ui.variantCount.addEventListener("input", updateVariantCountLabel);
+
+ui.environmentSelect?.addEventListener("change", (event) => {
+    setEnvironmentLabel(event.target.value);
 });
 
 document.querySelectorAll("[data-collapsible]").forEach((group) => {
@@ -571,6 +609,8 @@ function updateEnvironment(env) {
     };
     const color = palette[env] || 0x14532d;
     ground.material.color.setHex(color);
+    state.environment = env;
+    setEnvironmentLabel(env);
 
     if (env === "urban") {
         const skyline = new THREE.Group();
@@ -675,7 +715,7 @@ function activateDesign(index) {
     state.activeDesign = selected;
     buildDesign(selected.design);
     describeDesign(selected.design, selected.analytics);
-    ui.simulationStatus.textContent = `Ready to simulate ${selected.design.id}.`;
+    setSimulationStatus(`Ready to simulate ${selected.design.id}.`);
 }
 
 ui.generate.addEventListener("click", generateDesigns);
@@ -721,7 +761,7 @@ function playSimulation(record = false) {
         if (elapsed < totalDuration) {
             state.animation = requestAnimationFrame(animateStep);
         } else {
-            ui.simulationStatus.textContent = `Simulation complete for ${state.activeDesign.design.id}.`;
+            setSimulationStatus(`Simulation complete for ${state.activeDesign.design.id}.`);
             if (record && state.mediaRecorder) state.mediaRecorder.stop();
         }
     };
@@ -733,7 +773,7 @@ function playSimulation(record = false) {
         slab.scale.y = slab.userData?.baseScaleY ?? 1;
         slab.position.y = slab.userData?.baseY ?? 0;
     }
-    ui.simulationStatus.textContent = record ? "Recording simulation…" : "Simulating 3D printing sequence…";
+    setSimulationStatus(record ? "Recording simulation…" : "Simulating 3D printing sequence…");
     state.animation = requestAnimationFrame(animateStep);
 }
 
@@ -758,7 +798,7 @@ ui.recordVideo.addEventListener("click", async () => {
         ui.simulationVideo.src = url;
         ui.downloadLink.href = url;
         ui.videoPreview.hidden = false;
-        ui.simulationStatus.textContent = "Simulation video ready.";
+        setSimulationStatus("Simulation video ready.");
     };
     state.mediaRecorder = mediaRecorder;
     mediaRecorder.start();
@@ -766,4 +806,6 @@ ui.recordVideo.addEventListener("click", async () => {
 });
 
 applyLensVisibility();
-ui.simulationStatus.textContent = "Awaiting design synthesis.";
+setSimulationStatus("Awaiting design synthesis.");
+updateVariantCountLabel();
+setEnvironmentLabel(ui.environmentSelect?.value ?? state.environment);
