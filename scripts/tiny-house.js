@@ -186,6 +186,15 @@ const state = {
 
 const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+function randomUint32() {
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+        const buffer = new Uint32Array(1);
+        crypto.getRandomValues(buffer);
+        return buffer[0];
+    }
+    return Math.floor(Math.random() * 0xffffffff);
+}
+
 function seededRandom(seed) {
     let t = seed += 0x6d2b79f5;
     t = Math.imul(t ^ (t >>> 15), t | 1);
@@ -650,60 +659,74 @@ function updateEnvironment(env) {
 async function generateDesigns() {
     ui.generate.disabled = true;
     ui.generate.textContent = "⏳ Synthesizing";
-    state.designs = [];
-    ui.designList.innerHTML = "";
+    setSimulationStatus("Synthesizing intelligent layout variants…");
 
-    const params = {
-        location: document.getElementById("location").value,
-        lotWidth: Number(document.getElementById("lotWidth").value),
-        lotLength: Number(document.getElementById("lotLength").value),
-        orientation: document.getElementById("orientation").value,
-        environment: document.getElementById("environment").value,
-        area: Number(document.getElementById("area").value) / 10.7639,
-        floors: Number(document.getElementById("floors").value),
-        bedrooms: Number(document.getElementById("bedrooms").value),
-        bathrooms: Number(document.getElementById("bathrooms").value),
-        sustainability: document.getElementById("sustainability").value,
-        envelope: document.getElementById("envelope").value,
-        variantCount: Number(document.getElementById("variantCount").value),
-        energySystem: document.getElementById("energySystem").value,
-        waterStrategy: document.getElementById("waterStrategy").value,
-        fabricator: document.getElementById("fabricator").value,
-        palette: document.getElementById("palette").value,
-        budget: Number(document.getElementById("budget").value),
-    };
+    try {
+        state.designs = [];
+        ui.designList.innerHTML = "";
 
-    const location = await geocodeLocation(params.location);
-    const climate = location ? await fetchClimate(location.latitude, location.longitude) : null;
-    if (climate) climate.seaLevel = params.environment === "coastal" ? "coastal" : undefined;
-    const environment = environmentFromLocation(location, params.environment);
-    updateEnvironment(environment);
+        const params = {
+            location: document.getElementById("location").value,
+            lotWidth: Number(document.getElementById("lotWidth").value),
+            lotLength: Number(document.getElementById("lotLength").value),
+            orientation: document.getElementById("orientation").value,
+            environment: document.getElementById("environment").value,
+            area: Number(document.getElementById("area").value) / 10.7639,
+            floors: Number(document.getElementById("floors").value),
+            bedrooms: Number(document.getElementById("bedrooms").value),
+            bathrooms: Number(document.getElementById("bathrooms").value),
+            sustainability: document.getElementById("sustainability").value,
+            envelope: document.getElementById("envelope").value,
+            variantCount: Number(document.getElementById("variantCount").value),
+            energySystem: document.getElementById("energySystem").value,
+            waterStrategy: document.getElementById("waterStrategy").value,
+            fabricator: document.getElementById("fabricator").value,
+            palette: document.getElementById("palette").value,
+            budget: Number(document.getElementById("budget").value),
+        };
 
-    for (let i = 0; i < params.variantCount; i++) {
-        const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-        const design = generateLayout(seed, params);
-        state.designs.push({ design, seed, analytics: computeAnalytics(design, { climate, location }) });
-    }
+        const location = await geocodeLocation(params.location);
+        const climate = location ? await fetchClimate(location.latitude, location.longitude) : null;
+        if (climate) climate.seaLevel = params.environment === "coastal" ? "coastal" : undefined;
+        const environment = environmentFromLocation(location, params.environment);
+        updateEnvironment(environment);
 
-    ui.designList.innerHTML = state.designs
-        .map(
-            (entry, idx) => `
+        for (let i = 0; i < params.variantCount; i++) {
+            const seed = randomUint32();
+            const design = generateLayout(seed, params);
+            state.designs.push({ design, seed, analytics: computeAnalytics(design, { climate, location }) });
+        }
+
+        if (!state.designs.length) {
+            throw new Error("No designs generated");
+        }
+
+        ui.designList.innerHTML = state.designs
+            .map(
+                (entry, idx) => `
             <div class="design-item" data-index="${idx}">
                 <strong>${entry.design.id}</strong>
                 <span>${entry.analytics.programProfile}</span>
                 <span>${Math.round(entry.analytics.areaSqft).toLocaleString()} sqft · ${entry.design.features.roofType}</span>
             </div>
         `
-        )
-        .join("");
+            )
+            .join("");
 
-    ui.designList.querySelectorAll(".design-item").forEach((item) => {
-        item.addEventListener("click", () => activateDesign(Number(item.dataset.index)));
-    });
+        ui.designList.querySelectorAll(".design-item").forEach((item) => {
+            item.addEventListener("click", () => activateDesign(Number(item.dataset.index)));
+        });
 
-    activateDesign(0);
-    ui.generate.disabled = false;
-    ui.generate.textContent = "⚙️ Generate Intelligent Layouts";
+        activateDesign(0);
+    } catch (error) {
+        console.error("Generation error", error);
+        setSimulationStatus("Generation failed. Adjust parameters and try again.");
+        ui.designList.innerHTML =
+            '<div class="design-item error" role="alert">Unable to generate layouts. Please review inputs and retry.</div>';
+    } finally {
+        ui.generate.disabled = false;
+        ui.generate.textContent = "⚙️ Generate Intelligent Layouts";
+    }
 }
 
 function activateDesign(index) {
