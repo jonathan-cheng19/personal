@@ -10,6 +10,14 @@
     <link rel="stylesheet" href="styles/tiny-house.css" />
 </head>
 <body>
+    <div class="module-warning" id="moduleLoadWarning" hidden role="alert">
+        <strong>⚠️ Intelligent layout engine not loaded.</strong>
+        <p>
+            The UI module <code>scripts/tiny-house.js</code> could not be fetched. Serve this project from the repository root so
+            <code>/scripts</code> and <code>/styles</code> resolve correctly (for example: <code>python3 -m http.server 8000</code>).
+        </p>
+        <p>If this message disappears, the generator initialized successfully.</p>
+    </div>
     <header class="app-header">
         <div class="brand">
             <div class="brand-mark">⌂</div>
@@ -182,6 +190,14 @@
             </div>
 
             <button class="primary-button" id="generate">⚙️ Generate Intelligent Layouts</button>
+            <div class="generation-progress" id="generationProgress" hidden>
+                <div class="progress-bar" aria-hidden="true">
+                    <div class="progress-fill" id="generationProgressFill"></div>
+                </div>
+                <div class="progress-label" id="generationProgressLabel" role="status" aria-live="polite">
+                    Preparing synthesis…
+                </div>
+            </div>
 
             <div class="design-list" id="designList"></div>
         </aside>
@@ -296,6 +312,14 @@
         </main>
     </div>
 
+    <script>
+        window.addEventListener("DOMContentLoaded", () => {
+            if (!window.__tinyHouseStudioLoaded) {
+                const warning = document.getElementById("moduleLoadWarning");
+                if (warning) warning.hidden = false;
+            }
+        });
+    </script>
     <script type="module" src="scripts/tiny-house.js"></script>
 </body>
 </html>

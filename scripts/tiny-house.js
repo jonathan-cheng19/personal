@@ -2,6 +2,11 @@ import * as THREE from "https://unpkg.com/three@0.155.0/build/three.module.js";
 import { OrbitControls } from "https://unpkg.com/three@0.155.0/examples/jsm/controls/OrbitControls.js";
 import { Sky } from "https://unpkg.com/three@0.155.0/examples/jsm/objects/Sky.js";
 
+// Flag so the HTML shell can detect whether the module executed successfully.
+globalThis.__tinyHouseStudioLoaded = true;
+const moduleWarning = document.getElementById("moduleLoadWarning");
+if (moduleWarning) moduleWarning.hidden = true;
+
 const ui = {
     generate: document.getElementById("generate"),
     variantCount: document.getElementById("variantCount"),
@@ -31,6 +36,9 @@ const ui = {
     videoPreview: document.getElementById("videoPreview"),
     simulationVideo: document.getElementById("simulationVideo"),
     downloadLink: document.getElementById("downloadLink"),
+    generationProgress: document.getElementById("generationProgress"),
+    generationProgressFill: document.getElementById("generationProgressFill"),
+    generationProgressLabel: document.getElementById("generationProgressLabel"),
 };
 
 const lensToggles = {
@@ -41,6 +49,7 @@ const lensToggles = {
 };
 
 function updateVariantCountLabel() {
+    if (!ui.variantCount || !ui.variantLabel) return;
     const label = `${ui.variantCount.value} layouts queued`;
     ui.variantLabel.textContent = label;
     if (ui.headerVariantBadge) {
@@ -66,20 +75,89 @@ function setEnvironmentLabel(value) {
 }
 
 function setSimulationStatus(message) {
-    ui.simulationStatus.textContent = message;
+    if (ui.simulationStatus) {
+        ui.simulationStatus.textContent = message;
+    }
     if (ui.headerStatus) {
         ui.headerStatus.textContent = message;
     }
 }
 
-ui.variantCount.addEventListener("input", updateVariantCountLabel);
+const yieldToFrame = () =>
+    new Promise((resolve) =>
+        (typeof requestAnimationFrame === "function" ? requestAnimationFrame(resolve) : setTimeout(resolve, 16))
+    );
+
+function showGenerationProgress(total) {
+    if (!ui.generationProgress) return;
+    ui.generationProgress.hidden = false;
+    ui.generationProgress.classList.remove("success", "error");
+    if (ui.generationProgressFill) {
+        ui.generationProgressFill.style.width = "0%";
+    }
+    if (ui.generationProgressLabel) {
+        ui.generationProgressLabel.textContent = total
+            ? `Synthesizing layout 0 of ${total}…`
+            : "Synthesizing layouts…";
+    }
+}
+
+function updateGenerationProgress(current, total) {
+    if (!ui.generationProgress || !ui.generationProgressFill) return;
+    const percent = total ? Math.min(98, Math.max(0, Math.round((current / total) * 100))) : 0;
+    ui.generationProgressFill.style.width = `${percent}%`;
+    if (ui.generationProgressLabel) {
+        ui.generationProgressLabel.textContent = total
+            ? `Synthesizing layout ${current} of ${total}…`
+            : `Synthesizing layout ${current}…`;
+    }
+    setSimulationStatus(
+        total ? `Synthesizing layout ${current} of ${total}…` : `Synthesizing layout ${current}…`
+    );
+}
+
+function completeGenerationProgress({ message, success = true } = {}) {
+    if (!ui.generationProgress) return;
+    ui.generationProgress.classList.remove("success", "error");
+    if (success) {
+        ui.generationProgress.classList.add("success");
+        if (ui.generationProgressFill) {
+            ui.generationProgressFill.style.width = "100%";
+        }
+    } else {
+        ui.generationProgress.classList.add("error");
+        if (ui.generationProgressFill) {
+            ui.generationProgressFill.style.width = "12%";
+        }
+    }
+    if (ui.generationProgressLabel && message) {
+        ui.generationProgressLabel.textContent = message;
+    }
+    setTimeout(() => {
+        if (!ui.generationProgress) return;
+        ui.generationProgress.hidden = true;
+        ui.generationProgress.classList.remove("success", "error");
+        if (ui.generationProgressFill) {
+            ui.generationProgressFill.style.width = "0%";
+        }
+    }, success ? 1200 : 2200);
+}
+
+if (ui.variantCount) {
+    ui.variantCount.addEventListener("input", updateVariantCountLabel);
+    updateVariantCountLabel();
+}
+
+setEnvironmentLabel(ui.environmentSelect?.value);
 
 ui.environmentSelect?.addEventListener("change", (event) => {
     setEnvironmentLabel(event.target.value);
 });
 
 document.querySelectorAll("[data-collapsible]").forEach((group) => {
-    group.querySelector("header").addEventListener("click", () => {
+    const header = group.querySelector("header");
+    if (!header) return;
+    header.addEventListener("click", () => {
         group.classList.toggle("collapsed");
     });
 });
@@ -339,45 +417,75 @@ function buildDesign(design) {
 }
 
 function describeDesign(design, analytics) {
-    ui.activeDesignTitle.textContent = `${design.id} · ${analytics.programProfile}`;
-    ui.layoutSummary.innerHTML = design.rooms
-        .slice(0, 12)
-        .map((room) => `<div class="info-row"><span>${room.type}</span><span>${room.width.toFixed(1)}m × ${room.length.toFixed(1)}m</span></div>`)
-        .join("");
-    ui.highlightPills.innerHTML = analytics.highlights.map((h) => `<span>${h}</span>`).join("");
-    ui.marketInsights.innerHTML = analytics.market.map((m) => `<div class="info-row"><span>${m.label}</span><span>${m.value}</span></div>`).join("");
-    ui.metricArea.textContent = `${Math.round(analytics.areaSqft).toLocaleString()} sqft`;
-    ui.metricCarbon.textContent = `${Math.round(analytics.embodiedCarbon).toLocaleString()} kg CO₂e`;
-    ui.metricEnergy.textContent = `${Math.round(analytics.energyUse).toLocaleString()} kWh/yr`;
+    if (ui.activeDesignTitle) {
+        ui.activeDesignTitle.textContent = `${design.id} · ${analytics.programProfile}`;
+    }
+    if (ui.layoutSummary) {
+        ui.layoutSummary.innerHTML = design.rooms
+            .slice(0, 12)
+            .map((room) => `<div class="info-row"><span>${room.type}</span><span>${room.width.toFixed(1)}m × ${room.length.toFixed(1)}m</span></div>`)
+            .join("");
+    }
+    if (ui.highlightPills) {
+        ui.highlightPills.innerHTML = analytics.highlights.map((h) => `<span>${h}</span>`).join("");
+    }
+    if (ui.marketInsights) {
+        ui.marketInsights.innerHTML = analytics.market
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.metricArea) {
+        ui.metricArea.textContent = `${Math.round(analytics.areaSqft).toLocaleString()} sqft`;
+    }
+    if (ui.metricCarbon) {
+        ui.metricCarbon.textContent = `${Math.round(analytics.embodiedCarbon).toLocaleString()} kg CO₂e`;
+    }
+    if (ui.metricEnergy) {
+        ui.metricEnergy.textContent = `${Math.round(analytics.energyUse).toLocaleString()} kWh/yr`;
+    }
 
-    ui.materialsTable.innerHTML = analytics.materials
-        .map((mat) => `<tr><td>${mat.name}</td><td>${mat.quantity}</td><td>${mat.unitCost}</td><td>${mat.total}</td></tr>`)
-        .join("");
-    ui.timelineInsights.innerHTML = analytics.timeline
-        .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
-        .join("");
-    ui.financialInsights.innerHTML = analytics.financial
-        .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
-        .join("");
-    ui.systemsInsights.innerHTML = analytics.systems
-        .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
-        .join("");
-    ui.envelopeInsights.innerHTML = analytics.envelope
-        .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
-        .join("");
-    ui.climateRisk.innerHTML = analytics.climateRisks
-        .map(
-            (risk) => `
-            <div class="risk-card">
-                <header><strong>${risk.type}</strong><span class="risk-${risk.level.toLowerCase()}">${risk.level}</span></header>
-                <p>${risk.description}</p>
-            </div>
-        `
-        )
-        .join("");
-    ui.climateStrategies.innerHTML = analytics.climateStrategies
-        .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
-        .join("");
+    if (ui.materialsTable) {
+        ui.materialsTable.innerHTML = analytics.materials
+            .map((mat) => `<tr><td>${mat.name}</td><td>${mat.quantity}</td><td>${mat.unitCost}</td><td>${mat.total}</td></tr>`)
+            .join("");
+    }
+    if (ui.timelineInsights) {
+        ui.timelineInsights.innerHTML = analytics.timeline
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.financialInsights) {
+        ui.financialInsights.innerHTML = analytics.financial
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.systemsInsights) {
+        ui.systemsInsights.innerHTML = analytics.systems
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.envelopeInsights) {
+        ui.envelopeInsights.innerHTML = analytics.envelope
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.climateRisk) {
+        ui.climateRisk.innerHTML = analytics.climateRisks
+            .map(
+                (risk) => `
+                <div class="risk-card">
+                    <header><strong>${risk.type}</strong><span class="risk-${risk.level.toLowerCase()}">${risk.level}</span></header>
+                    <p>${risk.description}</p>
+                </div>
+            `
+            )
+            .join("");
+    }
+    if (ui.climateStrategies) {
+        ui.climateStrategies.innerHTML = analytics.climateStrategies
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
 }
 
 function computeAnalytics(design, context) {
@@ -657,13 +765,17 @@ function updateEnvironment(env) {
 }
 
 async function generateDesigns() {
+    if (!ui.generate) {
+        console.warn("Generate button missing; cannot start layout synthesis.");
+        return;
+    }
     ui.generate.disabled = true;
     ui.generate.textContent = "⏳ Synthesizing";
     setSimulationStatus("Synthesizing intelligent layout variants…");
 
     try {
         state.designs = [];
-        ui.designList.innerHTML = "";
+        if (ui.designList) ui.designList.innerHTML = "";
 
         const params = {
             location: document.getElementById("location").value,
@@ -685,6 +797,8 @@ async function generateDesigns() {
             budget: Number(document.getElementById("budget").value),
         };
 
+        showGenerationProgress(params.variantCount);
+
         const location = await geocodeLocation(params.location);
         const climate = location ? await fetchClimate(location.latitude, location.longitude) : null;
         if (climate) climate.seaLevel = params.environment === "coastal" ? "coastal" : undefined;
@@ -695,10 +809,18 @@ async function generateDesigns() {
             const seed = randomUint32();
             const design = generateLayout(seed, params);
             state.designs.push({ design, seed, analytics: computeAnalytics(design, { climate, location }) });
+            updateGenerationProgress(i + 1, params.variantCount);
+            // Ensure the UI reflects progress during intensive synthesis loops.
+            // eslint-disable-next-line no-await-in-loop
+            await yieldToFrame();
         }
 
         if (!state.designs.length) {
             throw new Error("No designs generated");
+        }
+
+        if (!ui.designList) {
+            throw new Error("Design list container missing");
         }
 
         ui.designList.innerHTML = state.designs
@@ -718,18 +840,34 @@ async function generateDesigns() {
         });
 
         activateDesign(0);
+        completeGenerationProgress({
+            message: "Layouts ready. Select a variant to inspect.",
+            success: true,
+        });
+        const variantCount = state.designs.length;
+        const descriptor = variantCount === 1 ? "layout" : "layouts";
+        setSimulationStatus(`Generated ${variantCount} intelligent ${descriptor}.`);
     } catch (error) {
         console.error("Generation error", error);
         setSimulationStatus("Generation failed. Adjust parameters and try again.");
-        ui.designList.innerHTML =
-            '<div class="design-item error" role="alert">Unable to generate layouts. Please review inputs and retry.</div>';
+        if (ui.designList) {
+            ui.designList.innerHTML =
+                '<div class="design-item error" role="alert">Unable to generate layouts. Please review inputs and retry.</div>';
+        }
+        completeGenerationProgress({
+            message: "Generation failed. Review the inputs and retry.",
+            success: false,
+        });
     } finally {
-        ui.generate.disabled = false;
-        ui.generate.textContent = "⚙️ Generate Intelligent Layouts";
+        if (ui.generate) {
+            ui.generate.disabled = false;
+            ui.generate.textContent = "⚙️ Generate Intelligent Layouts";
+        }
     }
 }
 
 function activateDesign(index) {
+    if (!ui.designList) return;
     ui.designList.querySelectorAll(".design-item").forEach((item) => item.classList.remove("active"));
     const item = ui.designList.querySelector(`[data-index="${index}"]`);
     if (item) item.classList.add("active");
@@ -741,7 +879,11 @@ function activateDesign(index) {
     setSimulationStatus(`Ready to simulate ${selected.design.id}.`);
 }
 
-ui.generate.addEventListener("click", generateDesigns);
+if (ui.generate) {
+    ui.generate.addEventListener("click", generateDesigns);
+} else {
+    console.warn("Generate button not found; layout synthesis UI inactive.");
+}
 
 window.addEventListener("resize", () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -800,9 +942,9 @@ function playSimulation(record = false) {
     state.animation = requestAnimationFrame(animateStep);
 }
 
-ui.simulatePrint.addEventListener("click", () => playSimulation(false));
+ui.simulatePrint?.addEventListener("click", () => playSimulation(false));
 
-ui.recordVideo.addEventListener("click", async () => {
+ui.recordVideo?.addEventListener("click", async () => {
     if (!state.activeDesign) return;
     if (state.mediaRecorder) {
         state.mediaRecorder.stop();
