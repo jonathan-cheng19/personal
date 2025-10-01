@@ -2,10 +2,19 @@ import * as THREE from "https://unpkg.com/three@0.155.0/build/three.module.js";
 import { OrbitControls } from "https://unpkg.com/three@0.155.0/examples/jsm/controls/OrbitControls.js";
 import { Sky } from "https://unpkg.com/three@0.155.0/examples/jsm/objects/Sky.js";
 
+// Flag so the HTML shell can detect whether the module executed successfully.
+globalThis.__tinyHouseStudioLoaded = true;
+const moduleWarning = document.getElementById("moduleLoadWarning");
+if (moduleWarning) moduleWarning.hidden = true;
+
 const ui = {
     generate: document.getElementById("generate"),
     variantCount: document.getElementById("variantCount"),
     variantLabel: document.getElementById("variantCountLabel"),
+    headerVariantBadge: document.getElementById("headerVariantBadge"),
+    headerStatus: document.getElementById("headerStatus"),
+    headerEnvironment: document.getElementById("headerEnvironment"),
+    environmentSelect: document.getElementById("environment"),
     designList: document.getElementById("designList"),
     activeDesignTitle: document.getElementById("activeDesignTitle"),
     layoutSummary: document.getElementById("layoutSummary"),
@@ -27,6 +36,12 @@ const ui = {
     videoPreview: document.getElementById("videoPreview"),
     simulationVideo: document.getElementById("simulationVideo"),
     downloadLink: document.getElementById("downloadLink"),
+    generationProgress: document.getElementById("generationProgress"),
+    generationProgressFill: document.getElementById("generationProgressFill"),
+    generationProgressLabel: document.getElementById("generationProgressLabel"),
+    metricModeControls: document.getElementById("metricModeControls"),
+    metricLegend: document.getElementById("metricLegend"),
+    optimizationInsights: document.getElementById("optimizationInsights"),
 };
 
 const lensToggles = {
@@ -36,12 +51,116 @@ const lensToggles = {
     systems: document.getElementById("toggleSystems"),
 };
 
-ui.variantCount.addEventListener("input", () => {
-    ui.variantLabel.textContent = `${ui.variantCount.value} layouts queued`;
+function updateVariantCountLabel() {
+    if (!ui.variantCount || !ui.variantLabel) return;
+    const label = `${ui.variantCount.value} layouts queued`;
+    ui.variantLabel.textContent = label;
+    if (ui.headerVariantBadge) {
+        ui.headerVariantBadge.textContent = ui.variantCount.value;
+    }
+}
+
+function formatEnvironmentLabel(value) {
+    const option = ui.environmentSelect?.querySelector(`option[value="${value}"]`);
+    if (option) return option.textContent;
+    if (!value) return "—";
+    return value
+        .split(/[-_\s]/)
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+}
+
+function setEnvironmentLabel(value) {
+    if (ui.headerEnvironment) {
+        ui.headerEnvironment.textContent = formatEnvironmentLabel(value);
+    }
+}
+
+function setSimulationStatus(message) {
+    if (ui.simulationStatus) {
+        ui.simulationStatus.textContent = message;
+    }
+    if (ui.headerStatus) {
+        ui.headerStatus.textContent = message;
+    }
+}
+
+const yieldToFrame = () =>
+    new Promise((resolve) =>
+        (typeof requestAnimationFrame === "function" ? requestAnimationFrame(resolve) : setTimeout(resolve, 16))
+    );
+
+function showGenerationProgress(total) {
+    if (!ui.generationProgress) return;
+    ui.generationProgress.hidden = false;
+    ui.generationProgress.classList.remove("success", "error");
+    if (ui.generationProgressFill) {
+        ui.generationProgressFill.style.width = "0%";
+    }
+    if (ui.generationProgressLabel) {
+        ui.generationProgressLabel.textContent = total
+            ? `Synthesizing layout 0 of ${total}…`
+            : "Synthesizing layouts…";
+    }
+}
+
+function updateGenerationProgress(current, total) {
+    if (!ui.generationProgress || !ui.generationProgressFill) return;
+    const percent = total ? Math.min(98, Math.max(0, Math.round((current / total) * 100))) : 0;
+    ui.generationProgressFill.style.width = `${percent}%`;
+    if (ui.generationProgressLabel) {
+        ui.generationProgressLabel.textContent = total
+            ? `Synthesizing layout ${current} of ${total}…`
+            : `Synthesizing layout ${current}…`;
+    }
+    setSimulationStatus(
+        total ? `Synthesizing layout ${current} of ${total}…` : `Synthesizing layout ${current}…`
+    );
+}
+
+function completeGenerationProgress({ message, success = true } = {}) {
+    if (!ui.generationProgress) return;
+    ui.generationProgress.classList.remove("success", "error");
+    if (success) {
+        ui.generationProgress.classList.add("success");
+        if (ui.generationProgressFill) {
+            ui.generationProgressFill.style.width = "100%";
+        }
+    } else {
+        ui.generationProgress.classList.add("error");
+        if (ui.generationProgressFill) {
+            ui.generationProgressFill.style.width = "12%";
+        }
+    }
+    if (ui.generationProgressLabel && message) {
+        ui.generationProgressLabel.textContent = message;
+    }
+    setTimeout(() => {
+        if (!ui.generationProgress) return;
+        ui.generationProgress.hidden = true;
+        ui.generationProgress.classList.remove("success", "error");
+        if (ui.generationProgressFill) {
+            ui.generationProgressFill.style.width = "0%";
+        }
+    }, success ? 1200 : 2200);
+}
+
+if (ui.variantCount) {
+    ui.variantCount.addEventListener("input", updateVariantCountLabel);
+    updateVariantCountLabel();
+}
+
+setEnvironmentLabel(ui.environmentSelect?.value);
+
+ui.environmentSelect?.addEventListener("change", (event) => {
+    setEnvironmentLabel(event.target.value);
 });
 
 document.querySelectorAll("[data-collapsible]").forEach((group) => {
-    group.querySelector("header").addEventListener("click", () => {
+    const header = group.querySelector("header");
+    if (!header) return;
+    header.addEventListener("click", () => {
         group.classList.toggle("collapsed");
     });
 });
@@ -56,6 +175,16 @@ document.querySelectorAll(".viewport-tabs button").forEach((btn) => {
         });
     });
 });
+
+if (ui.metricModeControls) {
+    ui.metricModeControls.querySelectorAll("button").forEach((button) => {
+        button.addEventListener("click", () => {
+            ui.metricModeControls.querySelectorAll("button").forEach((btn) => btn.classList.remove("active"));
+            button.classList.add("active");
+            updateRoomVisuals(button.dataset.mode);
+        });
+    });
+}
 
 const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById("three-canvas"), antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -116,12 +245,31 @@ Object.values(lensGroups).forEach((group) => scene.add(group));
 const environmentGroup = new THREE.Group();
 scene.add(environmentGroup);
 
+const labelGroup = new THREE.Group();
+scene.add(labelGroup);
+
 function clearGroups() {
     Object.values(lensGroups).forEach((group) => {
         while (group.children.length) {
-            group.remove(group.children[0]);
+            const child = group.children[group.children.length - 1];
+            group.remove(child);
+            if (child.geometry) child.geometry.dispose?.();
+            const material = child.material;
+            if (Array.isArray(material)) {
+                material.forEach((mat) => mat?.map?.dispose?.());
+                material.forEach((mat) => mat?.dispose?.());
+            } else if (material) {
+                material.map?.dispose?.();
+                material.dispose?.();
+            }
         }
     });
+    while (labelGroup.children.length) {
+        const child = labelGroup.children.pop();
+        if (child.material?.map) child.material.map.dispose?.();
+        child.material?.dispose?.();
+    }
+    state.roomMeshes = [];
 }
 
 function applyLensVisibility() {
@@ -144,9 +292,200 @@ const state = {
     mediaRecorder: null,
     recordedChunks: [],
     environment: "auto",
+    metricMode: "program",
+    roomMeshes: [],
 };
 
 const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+const programPalette = {
+    Living: 0x60a5fa,
+    Sleeping: 0xf472b6,
+    Culinary: 0xf59e0b,
+    Wellness: 0x34d399,
+    Flex: 0xa855f7,
+    Utility: 0x38bdf8,
+    Service: 0x94a3b8,
+};
+
+const heatmapPalettes = {
+    cost: [0x38bdf8, 0x0ea5e9, 0xf97316],
+    energy: [0x22d3ee, 0x3b82f6, 0x9333ea],
+    carbon: [0x4ade80, 0xfacc15, 0xef4444],
+    comfort: [0x10b981, 0x60a5fa, 0xf97316],
+};
+
+const metricMetadata = {
+    program: { label: "Program", unit: "", palette: null, accessor: (room) => room.category },
+    cost: { label: "Cost Intensity", unit: "USD / sqft", palette: heatmapPalettes.cost, accessor: (room) => room.performance?.costPerSqft ?? 0 },
+    energy: { label: "Energy Intensity", unit: "kWh / sqft·yr", palette: heatmapPalettes.energy, accessor: (room) => room.performance?.energyIntensity ?? 0 },
+    carbon: { label: "Embodied Carbon", unit: "kg CO₂e / sqft", palette: heatmapPalettes.carbon, accessor: (room) => room.performance?.carbonIntensity ?? 0 },
+    comfort: { label: "Comfort Index", unit: "Score 0–100", palette: heatmapPalettes.comfort, accessor: (room) => room.performance?.comfortScore ?? 0 },
+};
+
+function interpolatePalette(palette, t) {
+    if (!palette?.length) return new THREE.Color(0xffffff);
+    const clamped = Math.max(0, Math.min(1, t));
+    const scaled = clamped * (palette.length - 1);
+    const idx = Math.floor(scaled);
+    const frac = scaled - idx;
+    const start = new THREE.Color(palette[idx]);
+    const end = new THREE.Color(palette[Math.min(idx + 1, palette.length - 1)]);
+    return start.lerp(end, frac);
+}
+
+function createMaterialTextures() {
+    const parquetCanvas = document.createElement("canvas");
+    parquetCanvas.width = parquetCanvas.height = 256;
+    const ctx = parquetCanvas.getContext("2d");
+    ctx.fillStyle = "#2f3e54";
+    ctx.fillRect(0, 0, 256, 256);
+    for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+            const tone = 38 + ((x + y) % 2) * 10;
+            ctx.fillStyle = `rgb(${tone + 70}, ${tone + 40}, ${tone})`;
+            ctx.fillRect(x * 32, y * 32, 32, 32);
+        }
+    }
+    const parquetTexture = new THREE.CanvasTexture(parquetCanvas);
+    parquetTexture.wrapS = parquetTexture.wrapT = THREE.RepeatWrapping;
+    parquetTexture.repeat.set(6, 6);
+
+    const roofCanvas = document.createElement("canvas");
+    roofCanvas.width = roofCanvas.height = 128;
+    const roofCtx = roofCanvas.getContext("2d");
+    roofCtx.fillStyle = "#111827";
+    roofCtx.fillRect(0, 0, 128, 128);
+    roofCtx.fillStyle = "rgba(148, 163, 184, 0.2)";
+    for (let i = 0; i < 18; i++) {
+        roofCtx.fillRect(i * 7, 0, 3, 128);
+    }
+    const roofTexture = new THREE.CanvasTexture(roofCanvas);
+    roofTexture.wrapS = roofTexture.wrapT = THREE.RepeatWrapping;
+    roofTexture.repeat.set(3, 3);
+
+    return { parquet: parquetTexture, roof: roofTexture };
+}
+
+const textures = createMaterialTextures();
+
+function getProgramColor(category) {
+    return programPalette[category] ?? 0x94a3b8;
+}
+
+function createRoomLabel(text) {
+    const canvas = document.createElement("canvas");
+    canvas.width = 256;
+    canvas.height = 64;
+    const context = canvas.getContext("2d");
+    context.fillStyle = "rgba(15, 23, 42, 0.82)";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "rgba(255, 255, 255, 0.92)";
+    context.font = "28px 'Inter', sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(text, canvas.width / 2, canvas.height / 2);
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(2.2, 0.55, 1);
+    return sprite;
+}
+
+function updateMetricLegend(mode, stats = {}) {
+    if (!ui.metricLegend) return;
+    if (mode === "program") {
+        const categories = Array.from(
+            new Set(state.roomMeshes.map((mesh) => mesh.userData?.room?.category).filter(Boolean))
+        );
+        if (!categories.length) {
+            ui.metricLegend.innerHTML =
+                '<strong>Program Legend</strong><span>Generate a layout to reveal spatial program colors.</span>';
+            return;
+        }
+        ui.metricLegend.innerHTML = [
+            '<strong>Program Legend</strong>',
+            ...categories.map((category) => {
+                const color = new THREE.Color(getProgramColor(category));
+                return `<div class="legend-row"><span class="legend-swatch" style="background: #${color.getHexString()}"></span><span>${category}</span></div>`;
+            }),
+        ].join("");
+        return;
+    }
+
+    const formatter = (value) => {
+        if (typeof value !== "number" || Number.isNaN(value)) return "—";
+        if (Math.abs(value) >= 1000) return Math.round(value).toLocaleString();
+        if (Math.abs(value) >= 100) return value.toFixed(0);
+        return value.toFixed(1);
+    };
+
+    const gradient = stats.palette
+        ? `linear-gradient(90deg, ${stats.palette
+              .map((hex, idx) => {
+                  const color = new THREE.Color(hex).getStyle();
+                  const stop = Math.round((idx / (stats.palette.length - 1 || 1)) * 100);
+                  return `${color} ${stop}%`;
+              })
+              .join(", ")})`
+        : undefined;
+
+    ui.metricLegend.innerHTML = `
+        <strong>${stats.label ?? "Metric"}</strong>
+        <div class="legend-bar" style="background:${gradient || "rgba(56,189,248,0.8)"}"></div>
+        <div class="legend-labels"><span>${formatter(stats.min)}</span><span>${formatter(stats.max)}</span></div>
+        <span>${stats.unit ?? ""}</span>
+    `;
+}
+
+function updateRoomVisuals(mode = state.metricMode) {
+    state.metricMode = mode;
+    const meta = metricMetadata[mode];
+    if (!meta || !state.roomMeshes.length) {
+        updateMetricLegend(mode);
+        return;
+    }
+    if (mode === "program") {
+        state.roomMeshes.forEach((mesh) => {
+            const room = mesh.userData?.room;
+            const color = new THREE.Color(getProgramColor(room?.category));
+            mesh.material.color.copy(color.clone().multiplyScalar(0.95));
+            mesh.material.emissive.copy(color.clone().multiplyScalar(0.18));
+            mesh.material.needsUpdate = true;
+        });
+        updateMetricLegend(mode);
+        return;
+    }
+
+    const values = state.roomMeshes.map((mesh) => meta.accessor(mesh.userData?.room || {}));
+    if (!values.length || values.every((value) => typeof value !== "number" || Number.isNaN(value))) {
+        updateMetricLegend(mode, { label: meta.label, unit: meta.unit, min: 0, max: 0, palette: meta.palette });
+        return;
+    }
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+
+    state.roomMeshes.forEach((mesh, idx) => {
+        const value = values[idx];
+        const normalized = (value - min) / range;
+        const color = interpolatePalette(meta.palette, normalized);
+        mesh.material.color.copy(color.clone().multiplyScalar(0.9));
+        mesh.material.emissive.copy(color.clone().multiplyScalar(0.25 + normalized * 0.3));
+        mesh.material.needsUpdate = true;
+    });
+
+    updateMetricLegend(mode, { label: meta.label, unit: meta.unit, min, max, palette: meta.palette });
+}
+
+function randomUint32() {
+    if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+        const buffer = new Uint32Array(1);
+        crypto.getRandomValues(buffer);
+        return buffer[0];
+    }
+    return Math.floor(Math.random() * 0xffffffff);
+}
 
 function seededRandom(seed) {
     let t = seed += 0x6d2b79f5;
@@ -172,6 +511,8 @@ function generateLayout(seed, params) {
     for (let i = 0; i < modules; i++) {
         const width = moduleWidth * (rand() * 0.6 + 0.6);
         const length = moduleLength * (rand() * 0.6 + 0.6);
+        const type = assignRoomType(i, params, rand);
+        const category = categorizeRoom(type);
         rooms.push({
             id: `module-${i}`,
             width,
@@ -179,7 +520,8 @@ function generateLayout(seed, params) {
             height: 3 * floors,
             x: x + width / 2,
             z: z + length / 2,
-            type: assignRoomType(i, params, rand),
+            type,
+            category,
         });
         x += width;
         if (x > baseWidth / 2) {
@@ -203,6 +545,12 @@ function generateLayout(seed, params) {
         lighting: randomChoice(["Dynamic Circadian", "Smart Dimmable", "Daylight Harvesting"]),
         shading: randomChoice(["Electrochromic", "Kinetic Louvers", "Retractable Awning"]),
     };
+
+    rooms.forEach((room) => {
+        room.performance = evaluateRoomPerformance(room, params, features);
+        room.programColor = getProgramColor(room.category);
+        room.areaSqft = room.performance.areaSqft;
+    });
 
     return {
         id: `Design-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
@@ -232,102 +580,292 @@ function assignRoomType(index, params, rand) {
     return catalog[Math.floor(rand() * catalog.length)] || randomChoice(palette);
 }
 
-function buildDesign(design) {
-    clearGroups();
-    const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.45, metalness: 0 });
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
-    const roofMaterial = new THREE.MeshStandardMaterial({ color: 0x0f172a, emissive: 0x020617, roughness: 0.6 });
-    const structureMaterial = new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.6, roughness: 0.35 });
-    const systemsMaterial = new THREE.MeshStandardMaterial({ color: 0xf97316, emissive: 0x7c2d12, metalness: 0.1, roughness: 0.2 });
+function categorizeRoom(type) {
+    if (!type) return "Flex";
+    const normalized = type.toLowerCase();
+    if (normalized.includes("bed")) return "Sleeping";
+    if (normalized.includes("bath")) return "Wellness";
+    if (normalized.includes("kitchen") || normalized.includes("dining")) return "Culinary";
+    if (normalized.includes("great") || normalized.includes("living") || normalized.includes("lounge")) return "Living";
+    if (normalized.includes("workspace") || normalized.includes("studio") || normalized.includes("library")) return "Flex";
+    if (normalized.includes("utility") || normalized.includes("mudroom")) return "Utility";
+    if (normalized.includes("atrium") || normalized.includes("service") || normalized.includes("core")) return "Service";
+    return "Flex";
+}
 
-    const floor = new THREE.Mesh(
-        new THREE.BoxGeometry(design.footprint.width + 0.1, 0.2, design.footprint.length + 0.1),
-        floorMaterial
+function evaluateRoomPerformance(room, params, features) {
+    const areaSqft = room.width * room.length * 10.7639;
+    const categoryCost = {
+        Living: 215,
+        Sleeping: 185,
+        Culinary: 255,
+        Wellness: 230,
+        Flex: 198,
+        Utility: 160,
+        Service: 150,
+    };
+    const categoryEnergy = {
+        Living: 12,
+        Sleeping: 8,
+        Culinary: 15,
+        Wellness: 11,
+        Flex: 9,
+        Utility: 7,
+        Service: 6,
+    };
+    const categoryCarbon = {
+        Living: 32,
+        Sleeping: 26,
+        Culinary: 35,
+        Wellness: 28,
+        Flex: 27,
+        Utility: 24,
+        Service: 20,
+    };
+    const sustainabilityCostFactor = { balanced: 1, carbon: 1.08, energy: 1.05, luxury: 1.22 };
+    const paletteFactor = { minimal: 0.95, industrial: 1.02, organic: 1.08, futuristic: 1.14 };
+    const envelopeFactor = { standard: 1, hempcrete: 0.86, recycled: 0.74, "mass-timber": 0.92 };
+    const energySystemFactor = { hybrid: 0.88, geothermal: 0.78, grid: 1, microgrid: 0.82 };
+    const comfortOrientation = { balanced: 0, southern: 3, eastern: 2, western: -2 };
+
+    const costPerSqft =
+        (categoryCost[room.category] ?? 200) *
+        (sustainabilityCostFactor[params.sustainability] ?? 1.05) *
+        (paletteFactor[params.palette] ?? 1);
+
+    const energyIntensity =
+        (categoryEnergy[room.category] ?? 10) *
+        (energySystemFactor[params.energySystem] ?? 0.95) *
+        (1 - Math.min(0.22, features.glazingRatio * 0.28));
+
+    const carbonIntensity =
+        (categoryCarbon[room.category] ?? 26) *
+        (envelopeFactor[params.envelope] ?? 1) *
+        (params.sustainability === "carbon" ? 0.92 : 1);
+
+    const comfortBase = 68 + features.glazingRatio * 22 + (room.category === "Sleeping" ? 3 : 0);
+    const comfortScore = Math.min(
+        96,
+        Math.max(
+            60,
+            comfortBase +
+                (params.sustainability === "luxury" ? 6 : params.sustainability === "energy" ? 5 : 3) +
+                (comfortOrientation[params.orientation] ?? 0) -
+                (params.energySystem === "grid" ? 2 : 0)
+        )
     );
+
+    const totalCost = costPerSqft * areaSqft;
+    const energyUse = energyIntensity * areaSqft;
+    const carbonTotal = carbonIntensity * areaSqft;
+
+    return { areaSqft, costPerSqft, energyIntensity, carbonIntensity, comfortScore, totalCost, energyUse, carbonTotal };
+}
+
+function buildDesign(design, analytics) {
+    clearGroups();
+    const floorMaterial = new THREE.MeshPhysicalMaterial({
+        color: 0x1a2437,
+        roughness: 0.8,
+        metalness: 0.12,
+        map: textures.parquet,
+    });
+    if (floorMaterial.map) floorMaterial.map.needsUpdate = true;
+
+    const slabGeometry = new THREE.BoxGeometry(design.footprint.width + 0.2, 0.22, design.footprint.length + 0.2);
+    const floor = new THREE.Mesh(slabGeometry, floorMaterial);
     floor.receiveShadow = true;
     floor.position.y = 0;
+    floor.userData.isSlab = true;
+    floor.userData.baseY = floor.position.y;
+    floor.userData.baseScaleY = floor.scale.y;
     lensGroups.walls.add(floor);
 
-    design.rooms.forEach((room) => {
-        const wall = new THREE.Mesh(new THREE.BoxGeometry(room.width, room.height, room.length), wallMaterial.clone());
-        wall.position.set(room.x, room.height / 2, room.z);
-        wall.castShadow = true;
-        wall.receiveShadow = true;
-        wall.userData.room = room;
-        wall.userData.originalScaleY = wall.scale.y;
-        lensGroups.walls.add(wall);
-
-        const structure = new THREE.Mesh(new THREE.BoxGeometry(room.width + 0.08, room.height + 0.2, room.length + 0.08), structureMaterial);
-        structure.position.copy(wall.position);
-        structure.material.transparent = true;
-        structure.material.opacity = 0.08;
-        lensGroups.structure.add(structure);
+    const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x020617, transparent: true, opacity: 0.35 });
+    const structureMaterial = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.3 });
+    const systemsMaterial = new THREE.MeshPhysicalMaterial({
+        color: 0xf97316,
+        emissive: new THREE.Color(0x7c2d12),
+        roughness: 0.35,
+        metalness: 0.25,
     });
 
+    const wallThickness = 0.2;
+    design.rooms.forEach((room) => {
+        const geometry = new THREE.BoxGeometry(
+            Math.max(room.width - wallThickness, 0.4),
+            room.height,
+            Math.max(room.length - wallThickness, 0.4)
+        );
+        const material = new THREE.MeshPhysicalMaterial({
+            color: new THREE.Color(room.programColor || 0xe2e8f0).multiplyScalar(0.9),
+            roughness: 0.38,
+            metalness: 0.18,
+            clearcoat: 0.35,
+            clearcoatRoughness: 0.25,
+            transparent: true,
+            opacity: 0.94,
+        });
+        const roomMesh = new THREE.Mesh(geometry, material);
+        roomMesh.position.set(room.x, room.height / 2, room.z);
+        roomMesh.castShadow = true;
+        roomMesh.receiveShadow = true;
+        roomMesh.userData.room = room;
+        roomMesh.userData.originalScaleY = roomMesh.scale.y;
+        state.roomMeshes.push(roomMesh);
+        lensGroups.walls.add(roomMesh);
+
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial.clone());
+        edges.position.copy(roomMesh.position);
+        lensGroups.structure.add(edges);
+
+        const frameBase = new THREE.BoxGeometry(
+            geometry.parameters.width + 0.18,
+            room.height + 0.25,
+            geometry.parameters.depth + 0.18
+        );
+        const frameEdges = new THREE.EdgesGeometry(frameBase);
+        frameBase.dispose();
+        const frame = new THREE.LineSegments(frameEdges, structureMaterial.clone());
+        frame.position.copy(roomMesh.position);
+        lensGroups.structure.add(frame);
+
+        const label = createRoomLabel(room.type);
+        label.position.set(room.x, room.height + 0.35, room.z);
+        labelGroup.add(label);
+        roomMesh.userData.label = label;
+    });
+
+    const roofMaterial = new THREE.MeshPhysicalMaterial({
+        color: 0x101827,
+        roughness: 0.55,
+        metalness: 0.28,
+        map: textures.roof,
+        clearcoat: 0.12,
+    });
+    if (roofMaterial.map) roofMaterial.map.needsUpdate = true;
     const roof = new THREE.Mesh(
-        new THREE.BoxGeometry(design.footprint.width + 0.3, 0.18, design.footprint.length + 0.3),
+        new THREE.BoxGeometry(design.footprint.width + 0.45, 0.2, design.footprint.length + 0.45),
         roofMaterial
     );
-    roof.position.y = design.rooms[0]?.height + 0.15 || 3.2;
+    roof.position.y = design.rooms[0]?.height + 0.22 || 3.3;
     roof.castShadow = true;
+    roof.receiveShadow = true;
     lensGroups.roof.add(roof);
 
     design.connectors.forEach((core) => {
-        const pipe = new THREE.Mesh(new THREE.CylinderGeometry(core.radius * 0.3, core.radius * 0.3, 3.6, 24), systemsMaterial);
-        pipe.position.set(core.x, 1.6, core.z);
+        const pipe = new THREE.Mesh(new THREE.CylinderGeometry(core.radius * 0.28, core.radius * 0.28, 3.2, 24), systemsMaterial.clone());
+        pipe.position.set(core.x, 1.5, core.z);
         pipe.material.transparent = true;
-        pipe.material.opacity = 0.6;
+        pipe.material.opacity = 0.72;
         lensGroups.systems.add(pipe);
 
-        const conduit = new THREE.Mesh(new THREE.TorusGeometry(core.radius, 0.05, 8, 32), systemsMaterial.clone());
+        const conduit = new THREE.Mesh(new THREE.TorusGeometry(core.radius, 0.06, 12, 48), systemsMaterial.clone());
         conduit.rotation.x = Math.PI / 2;
         conduit.position.set(core.x, 2.2, core.z);
         lensGroups.systems.add(conduit);
     });
 
+    updateRoomVisuals(state.metricMode);
     applyLensVisibility();
+
+    if (analytics?.comfortScore && ui.headerStatus) {
+        ui.headerStatus.textContent = `Comfort index ${analytics.comfortScore.toFixed(0)}/100`;
+    }
 }
 
 function describeDesign(design, analytics) {
-    ui.activeDesignTitle.textContent = `${design.id} · ${analytics.programProfile}`;
-    ui.layoutSummary.innerHTML = design.rooms
-        .slice(0, 12)
-        .map((room) => `<div class="info-row"><span>${room.type}</span><span>${room.width.toFixed(1)}m × ${room.length.toFixed(1)}m</span></div>`)
-        .join("");
-    ui.highlightPills.innerHTML = analytics.highlights.map((h) => `<span>${h}</span>`).join("");
-    ui.marketInsights.innerHTML = analytics.market.map((m) => `<div class="info-row"><span>${m.label}</span><span>${m.value}</span></div>`).join("");
-    ui.metricArea.textContent = `${Math.round(analytics.areaSqft).toLocaleString()} sqft`;
-    ui.metricCarbon.textContent = `${Math.round(analytics.embodiedCarbon).toLocaleString()} kg CO₂e`;
-    ui.metricEnergy.textContent = `${Math.round(analytics.energyUse).toLocaleString()} kWh/yr`;
+    if (ui.activeDesignTitle) {
+        ui.activeDesignTitle.textContent = `${design.id} · ${analytics.programProfile}`;
+    }
+    if (ui.layoutSummary) {
+        ui.layoutSummary.innerHTML = design.rooms
+            .slice(0, 12)
+            .map((room) => {
+                const perf = room.performance || {};
+                const sqft = Math.round(perf.areaSqft ?? room.width * room.length * 10.7639);
+                const cost = perf.costPerSqft ? `$${perf.costPerSqft.toFixed(0)}/sqft` : "—";
+                const energy = perf.energyIntensity ? `${Math.round(perf.energyIntensity)} kWh/yr·sqft` : "—";
+                return `
+                    <div class="room-summary">
+                        <div>
+                            <strong>${room.type}</strong>
+                            <span>${room.category}</span>
+                        </div>
+                        <div class="room-metrics">
+                            <span>${sqft.toLocaleString()} sqft</span>
+                            <span>${cost} · ${energy}</span>
+                        </div>
+                    </div>
+                `;
+            })
+            .join("");
+    }
+    if (ui.highlightPills) {
+        ui.highlightPills.innerHTML = analytics.highlights.map((h) => `<span>${h}</span>`).join("");
+    }
+    if (ui.optimizationInsights) {
+        ui.optimizationInsights.innerHTML = (analytics.optimization || [])
+            .map((entry) => `<div class="insight-card"><strong>${entry.value}</strong><span>${entry.label}</span></div>`)
+            .join("");
+    }
+    if (ui.marketInsights) {
+        ui.marketInsights.innerHTML = analytics.market
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.metricArea) {
+        ui.metricArea.textContent = `${Math.round(analytics.areaSqft).toLocaleString()} sqft`;
+    }
+    if (ui.metricCarbon) {
+        ui.metricCarbon.textContent = `${Math.round(analytics.embodiedCarbon).toLocaleString()} kg CO₂e`;
+    }
+    if (ui.metricEnergy) {
+        ui.metricEnergy.textContent = `${Math.round(analytics.energyUse).toLocaleString()} kWh/yr`;
+    }
 
-    ui.materialsTable.innerHTML = analytics.materials
-        .map((mat) => `<tr><td>${mat.name}</td><td>${mat.quantity}</td><td>${mat.unitCost}</td><td>${mat.total}</td></tr>`)
-        .join("");
-    ui.timelineInsights.innerHTML = analytics.timeline
-        .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
-        .join("");
-    ui.financialInsights.innerHTML = analytics.financial
-        .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
-        .join("");
-    ui.systemsInsights.innerHTML = analytics.systems
-        .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
-        .join("");
-    ui.envelopeInsights.innerHTML = analytics.envelope
-        .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
-        .join("");
-    ui.climateRisk.innerHTML = analytics.climateRisks
-        .map(
-            (risk) => `
-            <div class="risk-card">
-                <header><strong>${risk.type}</strong><span class="risk-${risk.level.toLowerCase()}">${risk.level}</span></header>
-                <p>${risk.description}</p>
-            </div>
-        `
-        )
-        .join("");
-    ui.climateStrategies.innerHTML = analytics.climateStrategies
-        .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
-        .join("");
+    if (ui.materialsTable) {
+        ui.materialsTable.innerHTML = analytics.materials
+            .map((mat) => `<tr><td>${mat.name}</td><td>${mat.quantity}</td><td>${mat.unitCost}</td><td>${mat.total}</td></tr>`)
+            .join("");
+    }
+    if (ui.timelineInsights) {
+        ui.timelineInsights.innerHTML = analytics.timeline
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.financialInsights) {
+        ui.financialInsights.innerHTML = analytics.financial
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.systemsInsights) {
+        ui.systemsInsights.innerHTML = analytics.systems
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.envelopeInsights) {
+        ui.envelopeInsights.innerHTML = analytics.envelope
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.climateRisk) {
+        ui.climateRisk.innerHTML = analytics.climateRisks
+            .map(
+                (risk) => `
+                <div class="risk-card">
+                    <header><strong>${risk.type}</strong><span class="risk-${risk.level.toLowerCase()}">${risk.level}</span></header>
+                    <p>${risk.description}</p>
+                </div>
+            `
+            )
+            .join("");
+    }
+    if (ui.climateStrategies) {
+        ui.climateStrategies.innerHTML = analytics.climateStrategies
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
 }
 
 function computeAnalytics(design, context) {
@@ -339,22 +877,52 @@ function computeAnalytics(design, context) {
     const embodiedCarbon = wallArea * carbonIntensity * envelopeFactor;
     const energyMultiplier = { hybrid: 0.82, geothermal: 0.65, grid: 1.05, microgrid: 0.78 }[design.params.energySystem] || 1;
     const climateEnergy = context?.climate?.degreeDays ? 1 + (context.climate.degreeDays - 3000) / 12000 : 1;
-    const energyUse = areaSqft * 14 * energyMultiplier * climateEnergy;
+
+    const roomPerformance = design.rooms
+        .map((room) => room.performance)
+        .filter((perf) => perf && Number.isFinite(perf.totalCost));
+    const totalProgramArea = roomPerformance.reduce((sum, perf) => sum + (perf.areaSqft || 0), 0) || areaSqft;
+    const totalRoomCost = roomPerformance.reduce((sum, perf) => sum + (perf.totalCost || 0), 0);
+    const comfortScore = roomPerformance.length
+        ? roomPerformance.reduce((sum, perf) => sum + (perf.comfortScore || 0) * (perf.areaSqft || 0), 0) / totalProgramArea
+        : 72;
+
+    let energyUse = areaSqft * 14 * energyMultiplier * climateEnergy;
+    const energyFromRooms = roomPerformance.reduce((sum, perf) => sum + (perf.energyUse || 0), 0);
+    if (energyFromRooms > 0) {
+        energyUse = energyFromRooms;
+    }
+
+    const marketValue = estimateMarketValue(areaSqft, context?.location || null);
+    const materialCosts = buildMaterialCosts(design, floorArea, wallArea, envelopeFactor, marketValue.costFactor);
+    const aggregatedCost =
+        totalRoomCost > 0 ? Math.max(totalRoomCost, materialCosts.totalCost) : materialCosts.totalCost;
+    const costPerSqft = aggregatedCost / Math.max(1, areaSqft);
+    const carbonPerSqft = embodiedCarbon / Math.max(1, areaSqft);
+    const energyPerSqft = energyUse / Math.max(1, areaSqft);
+
     const highlights = [
         `${design.features.roofType} roof`,
         `${Math.round(design.features.glazingRatio * 100)}% glazing`,
         `${design.params.energySystem} energy hub`,
         `${design.params.envelope} envelope`,
+        `${Math.round(costPerSqft).toLocaleString()} USD/sqft build cost`,
+        `${Math.round(comfortScore)} comfort score`,
     ];
 
-    const marketValue = estimateMarketValue(areaSqft, context?.location || null);
-    const materialCosts = buildMaterialCosts(design, floorArea, wallArea, envelopeFactor, marketValue.costFactor);
     const timeline = buildTimeline(design, floorArea, materialCosts.printHours, design.params.fabricator);
     const financial = buildFinancials(materialCosts, marketValue);
     const systems = buildSystems(design, energyUse);
     const envelope = buildEnvelope(design, context?.climate);
     const climateRisks = assessClimate(context?.climate, context?.location);
     const climateStrategies = buildClimateStrategies(climateRisks, design);
+
+    const optimization = [
+        { label: "Total Build Cost", value: materialCosts.currencyFormatter.format(aggregatedCost) },
+        { label: "Cost Efficiency", value: materialCosts.currencyFormatter.format(costPerSqft) },
+        { label: "Energy Intensity", value: `${Math.round(energyPerSqft)} kWh/yr·sqft` },
+        { label: "Comfort Index", value: `${Math.round(comfortScore)}/100` },
+    ];
 
     return {
         areaSqft,
@@ -369,6 +937,11 @@ function computeAnalytics(design, context) {
         envelope,
         climateRisks,
         climateStrategies,
+        optimization,
+        comfortScore,
+        costPerSqft,
+        carbonPerSqft,
+        energyPerSqft,
         market: [
             { label: "Est. Sale Value", value: materialCosts.currencyFormatter.format(marketValue.saleValue) },
             { label: "Projected ROI", value: `${(marketValue.saleValue / materialCosts.totalCost * 100 - 100).toFixed(1)}%` },
@@ -568,6 +1141,8 @@ function updateEnvironment(env) {
     };
     const color = palette[env] || 0x14532d;
     ground.material.color.setHex(color);
+    state.environment = env;
+    setEnvironmentLabel(env);
 
     if (env === "urban") {
         const skyline = new THREE.Group();
@@ -605,77 +1180,129 @@ function updateEnvironment(env) {
 }
 
 async function generateDesigns() {
+    if (!ui.generate) {
+        console.warn("Generate button missing; cannot start layout synthesis.");
+        return;
+    }
     ui.generate.disabled = true;
     ui.generate.textContent = "⏳ Synthesizing";
-    state.designs = [];
-    ui.designList.innerHTML = "";
+    setSimulationStatus("Synthesizing intelligent layout variants…");
 
-    const params = {
-        location: document.getElementById("location").value,
-        lotWidth: Number(document.getElementById("lotWidth").value),
-        lotLength: Number(document.getElementById("lotLength").value),
-        orientation: document.getElementById("orientation").value,
-        environment: document.getElementById("environment").value,
-        area: Number(document.getElementById("area").value) / 10.7639,
-        floors: Number(document.getElementById("floors").value),
-        bedrooms: Number(document.getElementById("bedrooms").value),
-        bathrooms: Number(document.getElementById("bathrooms").value),
-        sustainability: document.getElementById("sustainability").value,
-        envelope: document.getElementById("envelope").value,
-        variantCount: Number(document.getElementById("variantCount").value),
-        energySystem: document.getElementById("energySystem").value,
-        waterStrategy: document.getElementById("waterStrategy").value,
-        fabricator: document.getElementById("fabricator").value,
-        palette: document.getElementById("palette").value,
-        budget: Number(document.getElementById("budget").value),
-    };
+    try {
+        state.designs = [];
+        if (ui.designList) {
+            ui.designList.innerHTML = "";
+        }
 
-    const location = await geocodeLocation(params.location);
-    const climate = location ? await fetchClimate(location.latitude, location.longitude) : null;
-    if (climate) climate.seaLevel = params.environment === "coastal" ? "coastal" : undefined;
-    const environment = environmentFromLocation(location, params.environment);
-    updateEnvironment(environment);
+        const params = {
+            location: document.getElementById("location").value,
+            lotWidth: Number(document.getElementById("lotWidth").value),
+            lotLength: Number(document.getElementById("lotLength").value),
+            orientation: document.getElementById("orientation").value,
+            environment: document.getElementById("environment").value,
+            area: Number(document.getElementById("area").value) / 10.7639,
+            floors: Number(document.getElementById("floors").value),
+            bedrooms: Number(document.getElementById("bedrooms").value),
+            bathrooms: Number(document.getElementById("bathrooms").value),
+            sustainability: document.getElementById("sustainability").value,
+            envelope: document.getElementById("envelope").value,
+            variantCount: Number(document.getElementById("variantCount").value),
+            energySystem: document.getElementById("energySystem").value,
+            waterStrategy: document.getElementById("waterStrategy").value,
+            fabricator: document.getElementById("fabricator").value,
+            palette: document.getElementById("palette").value,
+            budget: Number(document.getElementById("budget").value),
+        };
 
-    for (let i = 0; i < params.variantCount; i++) {
-        const seed = crypto.getRandomValues(new Uint32Array(1))[0];
-        const design = generateLayout(seed, params);
-        state.designs.push({ design, seed, analytics: computeAnalytics(design, { climate, location }) });
-    }
+        showGenerationProgress(params.variantCount);
 
-    ui.designList.innerHTML = state.designs
-        .map(
-            (entry, idx) => `
+        const location = await geocodeLocation(params.location);
+        const climate = location ? await fetchClimate(location.latitude, location.longitude) : null;
+        if (climate) climate.seaLevel = params.environment === "coastal" ? "coastal" : undefined;
+        const environment = environmentFromLocation(location, params.environment);
+        updateEnvironment(environment);
+
+        for (let i = 0; i < params.variantCount; i++) {
+            const seed = randomUint32();
+            const design = generateLayout(seed, params);
+            state.designs.push({ design, seed, analytics: computeAnalytics(design, { climate, location }) });
+            updateGenerationProgress(i + 1, params.variantCount);
+            // Ensure the UI reflects progress during intensive synthesis loops.
+            // eslint-disable-next-line no-await-in-loop
+            await yieldToFrame();
+        }
+
+        if (!state.designs.length) {
+            throw new Error("No designs generated");
+        }
+
+        if (!ui.designList) {
+            throw new Error("Design list container missing");
+        }
+
+        ui.designList.innerHTML = state.designs
+            .map(
+                (entry, idx) => `
             <div class="design-item" data-index="${idx}">
                 <strong>${entry.design.id}</strong>
                 <span>${entry.analytics.programProfile}</span>
                 <span>${Math.round(entry.analytics.areaSqft).toLocaleString()} sqft · ${entry.design.features.roofType}</span>
             </div>
         `
-        )
-        .join("");
+            )
+            .join("");
 
-    ui.designList.querySelectorAll(".design-item").forEach((item) => {
-        item.addEventListener("click", () => activateDesign(Number(item.dataset.index)));
-    });
+        ui.designList.querySelectorAll(".design-item").forEach((item) => {
+            item.addEventListener("click", () => activateDesign(Number(item.dataset.index)));
+        });
 
-    activateDesign(0);
-    ui.generate.disabled = false;
-    ui.generate.textContent = "⚙️ Generate Intelligent Layouts";
+        activateDesign(0);
+        completeGenerationProgress({
+            message: "Layouts ready. Select a variant to inspect.",
+            success: true,
+        });
+        const variantCount = state.designs.length;
+        const descriptor = variantCount === 1 ? "layout" : "layouts";
+        setSimulationStatus(`Generated ${variantCount} intelligent ${descriptor}.`);
+    } catch (error) {
+        console.error("Generation error", error);
+        setSimulationStatus("Generation failed. Adjust parameters and try again.");
+        if (ui.designList) {
+            ui.designList.innerHTML =
+                '<div class="design-item error" role="alert">Unable to generate layouts. Please review inputs and retry.</div>';
+        }
+        completeGenerationProgress({
+            message: "Generation failed. Review the inputs and retry.",
+            success: false,
+        });
+    } finally {
+        if (ui.generate) {
+            ui.generate.disabled = false;
+            ui.generate.textContent = "⚙️ Generate Intelligent Layouts";
+        }
+    }
 }
 
 function activateDesign(index) {
+    if (!ui.designList) return;
     ui.designList.querySelectorAll(".design-item").forEach((item) => item.classList.remove("active"));
     const item = ui.designList.querySelector(`[data-index="${index}"]`);
     if (item) item.classList.add("active");
     const selected = state.designs[index];
     if (!selected) return;
     state.activeDesign = selected;
-    buildDesign(selected.design);
+    buildDesign(selected.design, selected.analytics);
     describeDesign(selected.design, selected.analytics);
-    ui.simulationStatus.textContent = `Ready to simulate ${selected.design.id}.`;
+    const comfort = selected.analytics?.comfortScore;
+    const statusSuffix = Number.isFinite(comfort) ? ` · Comfort ${Math.round(comfort)}/100` : "";
+    setSimulationStatus(`Ready: ${selected.design.id}${statusSuffix}`);
 }
 
-ui.generate.addEventListener("click", generateDesigns);
+if (ui.generate) {
+    ui.generate.addEventListener("click", generateDesigns);
+} else {
+    console.warn("Generate button not found; layout synthesis UI inactive.");
+}
 
 window.addEventListener("resize", () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -697,12 +1324,16 @@ function playSimulation(record = false) {
     const start = performance.now();
     const roof = lensGroups.roof.children[0];
     const initialRoofY = roof ? roof.position.y : 0;
-    const walls = lensGroups.walls.children.filter((child) => child !== roof);
+    const animatedWalls = lensGroups.walls.children.filter((child) => {
+        const data = child.userData || {};
+        return data.room && !data.isSlab;
+    });
+    const slab = lensGroups.walls.children.find((child) => child.userData?.isSlab);
 
     const animateStep = (time) => {
         const elapsed = Math.min(time - start, totalDuration);
         const progress = elapsed / totalDuration;
-        walls.forEach((wall) => {
+        animatedWalls.forEach((wall) => {
             const baseScale = wall.userData.originalScaleY ?? 1;
             const eased = Math.max(0.01, progress);
             wall.scale.y = baseScale * eased;
@@ -714,21 +1345,25 @@ function playSimulation(record = false) {
         if (elapsed < totalDuration) {
             state.animation = requestAnimationFrame(animateStep);
         } else {
-            ui.simulationStatus.textContent = `Simulation complete for ${state.activeDesign.design.id}.`;
+            setSimulationStatus(`Simulation complete for ${state.activeDesign.design.id}.`);
             if (record && state.mediaRecorder) state.mediaRecorder.stop();
         }
     };
-    walls.forEach((wall) => {
+    animatedWalls.forEach((wall) => {
         wall.scale.y = 0.01;
         wall.position.y = 0.01;
     });
-    ui.simulationStatus.textContent = record ? "Recording simulation…" : "Simulating 3D printing sequence…";
+    if (slab) {
+        slab.scale.y = slab.userData?.baseScaleY ?? 1;
+        slab.position.y = slab.userData?.baseY ?? 0;
+    }
+    setSimulationStatus(record ? "Recording simulation…" : "Simulating 3D printing sequence…");
     state.animation = requestAnimationFrame(animateStep);
 }
 
-ui.simulatePrint.addEventListener("click", () => playSimulation(false));
+ui.simulatePrint?.addEventListener("click", () => playSimulation(false));
 
-ui.recordVideo.addEventListener("click", async () => {
+ui.recordVideo?.addEventListener("click", async () => {
     if (!state.activeDesign) return;
     if (state.mediaRecorder) {
         state.mediaRecorder.stop();
@@ -747,7 +1382,7 @@ ui.recordVideo.addEventListener("click", async () => {
         ui.simulationVideo.src = url;
         ui.downloadLink.href = url;
         ui.videoPreview.hidden = false;
-        ui.simulationStatus.textContent = "Simulation video ready.";
+        setSimulationStatus("Simulation video ready.");
     };
     state.mediaRecorder = mediaRecorder;
     mediaRecorder.start();
@@ -755,4 +1390,7 @@ ui.recordVideo.addEventListener("click", async () => {
 });
 
 applyLensVisibility();
-ui.simulationStatus.textContent = "Awaiting design synthesis.";
+setSimulationStatus("Awaiting design synthesis.");
+updateVariantCountLabel();
+setEnvironmentLabel(ui.environmentSelect?.value ?? state.environment);
+updateMetricLegend(state.metricMode);
