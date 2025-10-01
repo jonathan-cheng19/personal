@@ -201,6 +201,13 @@ textarea {
     transition: transform 0.2s ease;
 }
 
+.slider-hint {
+    margin: 0.45rem 0 0;
+    font-size: 0.78rem;
+    color: rgba(148, 163, 184, 0.8);
+    line-height: 1.4;
+}
+
 .control-group.collapsed header::after {
     transform: rotate(-90deg);
 }
@@ -367,35 +374,94 @@ textarea:focus {
     padding: 0.2rem 0.4rem;
     border-radius: 0.45rem;
 }
+.generation-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin: 1.1rem 0 0.8rem;
+    flex-wrap: wrap;
+}
+
+.generation-actions .secondary-button {
+    background: rgba(249, 115, 22, 0.12);
+    border-color: rgba(249, 115, 22, 0.4);
+    color: var(--accent-2);
+}
+
+.generation-actions button {
+    flex: 1 1 200px;
+}
+
+.generation-actions .secondary-button:hover {
+    border-color: rgba(249, 115, 22, 0.55);
+}
+
 .design-list {
-    margin-top: 1.4rem;
+    margin-top: 1.1rem;
     display: grid;
     gap: 0.75rem;
-    max-height: 220px;
+    max-height: 260px;
     overflow-y: auto;
     padding-right: 0.3rem;
 }
 
 .design-item {
-    padding: 0.75rem 0.95rem;
-    background: rgba(12, 19, 36, 0.85);
-    border-radius: 0.85rem;
+    padding: 0.85rem 1rem;
+    background: rgba(12, 19, 36, 0.88);
+    border-radius: 0.95rem;
     border: 1px solid rgba(148, 163, 184, 0.14);
     cursor: pointer;
     display: grid;
-    gap: 0.25rem;
-    transition: border 0.2s ease, transform 0.2s ease;
+    gap: 0.35rem;
+    transition: border 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+    position: relative;
 }
 
 .design-item:hover,
 .design-item.active {
     border-color: rgba(56, 189, 248, 0.35);
     transform: translateY(-2px);
+    box-shadow: 0 12px 30px -24px rgba(56, 189, 248, 0.85);
 }
 
 .design-item span {
     font-size: 0.75rem;
     color: var(--muted);
+}
+
+.design-item strong {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.score-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    background: rgba(56, 189, 248, 0.22);
+    color: var(--accent);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.score-badge.high {
+    background: rgba(34, 197, 94, 0.18);
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.4);
+}
+
+.score-badge.medium {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fbbf24;
+    border-color: rgba(251, 191, 36, 0.4);
+}
+
+.score-badge.low {
+    background: rgba(248, 113, 113, 0.18);
+    color: #f87171;
+    border-color: rgba(248, 113, 113, 0.4);
 }
 
 .viewport {

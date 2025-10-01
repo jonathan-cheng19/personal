@@ -39,6 +39,12 @@ const ui = {
     generationProgress: document.getElementById("generationProgress"),
     generationProgressFill: document.getElementById("generationProgressFill"),
     generationProgressLabel: document.getElementById("generationProgressLabel"),
+    scoreBreakdown: document.getElementById("scoreBreakdown"),
+    massInsights: document.getElementById("massInsights"),
+    climateEconomics: document.getElementById("climateEconomics"),
+    metricScore: document.getElementById("metricScore"),
+    metricRisk: document.getElementById("metricRisk"),
+    megaBatch: document.getElementById("megaBatch"),
 };
 
 const lensToggles = {
@@ -53,7 +59,8 @@ function updateVariantCountLabel() {
     const label = `${ui.variantCount.value} layouts queued`;
     ui.variantLabel.textContent = label;
     if (ui.headerVariantBadge) {
-        ui.headerVariantBadge.textContent = ui.variantCount.value;
+        const badgeValue = state.totalGenerated || Number(ui.variantCount.value);
+        ui.headerVariantBadge.textContent = badgeValue.toLocaleString();
     }
 }
 
@@ -232,6 +239,45 @@ Object.values(lensGroups).forEach((group) => scene.add(group));
 const environmentGroup = new THREE.Group();
 scene.add(environmentGroup);
 
+function lonLatToTile(lon, lat, zoom) {
+    const latRad = (lat * Math.PI) / 180;
+    const n = 2 ** zoom;
+    const x = Math.floor(((lon + 180) / 360) * n);
+    const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+    return { x, y };
+}
+
+function applyGroundTexture(location) {
+    if (!location) {
+        if (groundTexture) {
+            groundTexture.dispose();
+            groundTexture = null;
+        }
+        ground.material.map = null;
+        ground.material.needsUpdate = true;
+        return;
+    }
+    const zoom = 14;
+    const tile = lonLatToTile(location.longitude || 0, location.latitude || 0, zoom);
+    const url = `https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`;
+    textureLoader.load(
+        url,
+        (texture) => {
+            if (groundTexture) groundTexture.dispose();
+            groundTexture = texture;
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
+            ground.material.map = texture;
+            ground.material.needsUpdate = true;
+        },
+        undefined,
+        () => {
+            ground.material.map = null;
+            ground.material.needsUpdate = true;
+        }
+    );
+}
+
 function clearGroups() {
     Object.values(lensGroups).forEach((group) => {
         while (group.children.length) {
@@ -241,28 +287,45 @@ function clearGroups() {
 }
 
 function applyLensVisibility() {
-    lensGroups.roof.visible = lensToggles.roof.checked;
-    lensGroups.walls.children.forEach((mesh) => {
-        mesh.material.opacity = lensToggles.walls.checked ? 0.95 : 0.25;
-        mesh.material.transparent = true;
-        mesh.material.needsUpdate = true;
-    });
-    lensGroups.structure.visible = lensToggles.structure.checked;
-    lensGroups.systems.visible = lensToggles.systems.checked;
+    if (lensToggles.roof) {
+        lensGroups.roof.visible = lensToggles.roof.checked;
+    }
+    if (lensToggles.walls) {
+        lensGroups.walls.children.forEach((mesh) => {
+            mesh.material.opacity = lensToggles.walls.checked ? 0.95 : 0.25;
+            mesh.material.transparent = true;
+            mesh.material.needsUpdate = true;
+        });
+    }
+    if (lensToggles.structure) {
+        lensGroups.structure.visible = lensToggles.structure.checked;
+    }
+    if (lensToggles.systems) {
+        lensGroups.systems.visible = lensToggles.systems.checked;
+    }
 }
 
-Object.values(lensToggles).forEach((toggle) => toggle.addEventListener("change", applyLensVisibility));
+Object.values(lensToggles).forEach((toggle) => toggle?.addEventListener("change", applyLensVisibility));
 
 const state = {
     designs: [],
     activeDesign: null,
+    activeIndex: 0,
     animation: null,
     mediaRecorder: null,
     recordedChunks: [],
     environment: "auto",
+    totalGenerated: 0,
+    sweepStats: null,
 };
 
 const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+const textureLoader = new THREE.TextureLoader();
+textureLoader.crossOrigin = "anonymous";
+let groundTexture = null;
 
 function randomUint32() {
     if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
@@ -443,14 +506,43 @@ function describeDesign(design, analytics) {
     if (ui.metricEnergy) {
         ui.metricEnergy.textContent = `${Math.round(analytics.energyUse).toLocaleString()} kWh/yr`;
     }
+    if (ui.metricScore) {
+        ui.metricScore.textContent = `${Math.round(analytics.optimizationScore)} / 100`;
+    }
+    if (ui.metricRisk) {
+        ui.metricRisk.textContent = `${analytics.riskLabel} (${Math.round(analytics.riskScore * 100)}%)`;
+    }
 
     if (ui.materialsTable) {
         ui.materialsTable.innerHTML = analytics.materials
             .map((mat) => `<tr><td>${mat.name}</td><td>${mat.quantity}</td><td>${mat.unitCost}</td><td>${mat.total}</td></tr>`)
             .join("");
     }
+    if (ui.scoreBreakdown) {
+        const breakdown = [...analytics.scoreBreakdown];
+        if (state.sweepStats) {
+            breakdown.push({
+                label: "Mega Batch Avg",
+                value: `${(state.sweepStats.averageScore || 0).toFixed(1)} / 100`,
+            });
+            breakdown.push({
+                label: "Mega Batch Leader",
+                value: state.sweepStats.bestId
+                    ? `${state.sweepStats.bestId} (${Math.round(state.sweepStats.topScore || 0)} pts)`
+                    : "—",
+            });
+        }
+        ui.scoreBreakdown.innerHTML = breakdown
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
     if (ui.timelineInsights) {
         ui.timelineInsights.innerHTML = analytics.timeline
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
+    if (ui.massInsights) {
+        ui.massInsights.innerHTML = analytics.massInsights
             .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
             .join("");
     }
@@ -486,6 +578,11 @@ function describeDesign(design, analytics) {
             .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
             .join("");
     }
+    if (ui.climateEconomics) {
+        ui.climateEconomics.innerHTML = analytics.climateEconomics
+            .map((entry) => `<div class="info-row"><span>${entry.label}</span><span>${entry.value}</span></div>`)
+            .join("");
+    }
 }
 
 function computeAnalytics(design, context) {
@@ -493,8 +590,6 @@ function computeAnalytics(design, context) {
     const areaSqft = floorArea * 10.7639;
     const wallArea = design.rooms.reduce((sum, room) => sum + (room.width + room.length) * 2 * room.height, 0);
     const envelopeFactor = { standard: 1, hempcrete: 0.85, recycled: 0.72, "mass-timber": 0.92 }[design.params.envelope] || 1;
-    const carbonIntensity = { standard: 52, hempcrete: 34, recycled: 28, "mass-timber": 40 }[design.params.envelope] || 52;
-    const embodiedCarbon = wallArea * carbonIntensity * envelopeFactor;
     const energyMultiplier = { hybrid: 0.82, geothermal: 0.65, grid: 1.05, microgrid: 0.78 }[design.params.energySystem] || 1;
     const climateEnergy = context?.climate?.degreeDays ? 1 + (context.climate.degreeDays - 3000) / 12000 : 1;
     const energyUse = areaSqft * 14 * energyMultiplier * climateEnergy;
@@ -505,37 +600,104 @@ function computeAnalytics(design, context) {
         `${design.params.envelope} envelope`,
     ];
 
-    const marketValue = estimateMarketValue(areaSqft, context?.location || null);
-    const materialCosts = buildMaterialCosts(design, floorArea, wallArea, envelopeFactor, marketValue.costFactor);
-    const timeline = buildTimeline(design, floorArea, materialCosts.printHours, design.params.fabricator);
-    const financial = buildFinancials(materialCosts, marketValue);
+    const climateAssessment = assessClimate(context?.climate, context?.location);
+    const marketValue = estimateMarketValue(areaSqft, context?.location || null, climateAssessment);
+    const materialCosts = buildMaterialCosts(design, floorArea, wallArea, envelopeFactor, marketValue.costFactor, floorArea);
+    const timeline = buildTimeline(design, floorArea, materialCosts, design.params.fabricator, climateAssessment.riskScore);
+    const financial = buildFinancials(materialCosts, marketValue, climateAssessment.premium);
     const systems = buildSystems(design, energyUse);
     const envelope = buildEnvelope(design, context?.climate);
-    const climateRisks = assessClimate(context?.climate, context?.location);
-    const climateStrategies = buildClimateStrategies(climateRisks, design);
+    const climateStrategies = buildClimateStrategies(climateAssessment, design);
+    const climateEconomics = buildClimateEconomics(climateAssessment, materialCosts, marketValue, financial);
+
+    const costEfficiency = clamp((design.params.budget || materialCosts.totalCost * 1.15) / Math.max(materialCosts.totalCost, 1), 0, 1.2);
+    const costScore = clamp(costEfficiency, 0, 1);
+    const energyIntensity = energyUse / Math.max(areaSqft, 1);
+    const energyScore = clamp(1 - energyIntensity / 45, 0, 1);
+    const carbonPerM2 = materialCosts.embodiedCarbonTotal / Math.max(floorArea, 1);
+    const carbonScore = clamp(1 - carbonPerM2 / 65, 0, 1);
+    const resilienceScore = clamp(1 - climateAssessment.riskScore, 0, 1);
+    const optimizationScore = Math.round((costScore * 0.35 + energyScore * 0.25 + carbonScore * 0.2 + resilienceScore * 0.2) * 100);
+    const scoreBreakdown = [
+        { label: "Cost Efficiency", value: `${Math.round(costScore * 100)} / 100` },
+        { label: "Energy Performance", value: `${Math.round(energyScore * 100)} / 100` },
+        { label: "Carbon Profile", value: `${Math.round(carbonScore * 100)} / 100` },
+        { label: "Resilience", value: `${Math.round(resilienceScore * 100)} / 100` },
+    ];
 
     return {
         areaSqft,
-        embodiedCarbon,
+        embodiedCarbon: materialCosts.embodiedCarbonTotal,
         energyUse,
         highlights,
         programProfile: `${design.params.bedrooms}BR/${design.params.bathrooms}BA · ${design.floors}-level`,
         materials: materialCosts.entries,
+        massInsights: materialCosts.massInsights,
         timeline,
-        financial,
+        financial: financial.rows,
         systems,
         envelope,
-        climateRisks,
+        climateRisks: climateAssessment.risks,
         climateStrategies,
+        climateEconomics,
+        optimizationScore,
+        scoreBreakdown,
+        riskLabel: climateAssessment.label,
+        riskScore: climateAssessment.riskScore,
+        totalCost: materialCosts.totalCost,
+        saleValue: marketValue.saleValue,
+        printHours: materialCosts.printHours,
+        currencyFormatter: materialCosts.currencyFormatter,
         market: [
             { label: "Est. Sale Value", value: materialCosts.currencyFormatter.format(marketValue.saleValue) },
-            { label: "Projected ROI", value: `${(marketValue.saleValue / materialCosts.totalCost * 100 - 100).toFixed(1)}%` },
+            {
+                label: "Projected ROI",
+                value: `${((financial.netMargin / Math.max(financial.totalProjectCost, 1)) * 100).toFixed(1)}%`,
+            },
             { label: "Local Build Pressure", value: marketValue.marketPressure },
+            { label: "Risk Premium", value: `${Math.round(climateAssessment.premium * 100)}%` },
         ],
     };
 }
 
-function buildMaterialCosts(design, floorArea, wallArea, envelopeFactor, costFactor) {
+function scoreTier(score) {
+    if (score >= 85) return "high";
+    if (score >= 65) return "medium";
+    return "low";
+}
+
+function renderDesignList() {
+    if (!ui.designList) return;
+    if (!state.designs.length) {
+        ui.designList.innerHTML = "";
+        return;
+    }
+    ui.designList.innerHTML = state.designs
+        .map((entry, idx) => {
+            const score = Math.round(entry.analytics.optimizationScore || 0);
+            const tier = scoreTier(score);
+            const formatter =
+                entry.analytics.currencyFormatter || new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+            const cost = formatter.format(entry.analytics.totalCost || 0);
+            const sale = formatter.format(entry.analytics.saleValue || 0);
+            const print = `${Math.round(entry.analytics.printHours || 0)} hrs`;
+            const activeClass = idx === state.activeIndex ? " active" : "";
+            return `
+            <div class="design-item${activeClass}" data-index="${idx}">
+                <strong>${entry.design.id}<span class="score-badge ${tier}">Score ${score}</span></strong>
+                <span>${entry.analytics.programProfile}</span>
+                <span>${Math.round(entry.analytics.areaSqft).toLocaleString()} sqft · ${entry.design.features.roofType}</span>
+                <span>Cost ${cost} · Sale ${sale} · Print ${print}</span>
+            </div>
+        `;
+        })
+        .join("");
+    ui.designList.querySelectorAll(".design-item").forEach((item) => {
+        item.addEventListener("click", () => activateDesign(Number(item.dataset.index)));
+    });
+}
+
+function buildMaterialCosts(design, floorArea, wallArea, envelopeFactor, costFactor, areaM2) {
     const unitCosts = {
         foundation: 75 * costFactor,
         wall: 32 * costFactor * envelopeFactor,
@@ -544,47 +706,171 @@ function buildMaterialCosts(design, floorArea, wallArea, envelopeFactor, costFac
         finish: 40 * costFactor,
         systems: 45 * costFactor,
     };
-    const foundationVolume = design.footprint.width * design.footprint.length * 0.35;
+    const densities = {
+        concrete: 2400,
+        wallComposite: 1900,
+        roof: 520,
+        glass: 2500,
+        finishes: 780,
+        systems: 480,
+    };
+    const carbonFactors = {
+        concrete: 0.28,
+        wallComposite: 0.18,
+        roof: 0.12,
+        glass: 1.4,
+        finishes: 0.25,
+        systems: 0.32,
+    };
+    const wallThickness = 0.22;
+    const roofThickness = 0.18;
+    const slabThickness = 0.25;
+    const foundationVolume = design.footprint.width * design.footprint.length * slabThickness;
+    const wallVolume = wallArea * wallThickness;
     const roofArea = design.footprint.width * design.footprint.length;
+    const roofVolume = roofArea * roofThickness;
     const glazingArea = wallArea * design.features.glazingRatio;
-    const entriesRaw = [
-        { name: "3D Print Concrete", quantity: `${foundationVolume.toFixed(1)} m³`, total: foundationVolume * unitCosts.foundation },
-        { name: "Envelope Shell", quantity: `${wallArea.toFixed(0)} m²`, total: wallArea * unitCosts.wall },
-        { name: "Roof Assembly", quantity: `${roofArea.toFixed(0)} m²`, total: roofArea * unitCosts.roof },
-        { name: "Glazing Package", quantity: `${glazingArea.toFixed(0)} m²`, total: glazingArea * unitCosts.glazing },
-        { name: "Interior Fit-Out", quantity: `${(floorArea * 0.9).toFixed(0)} m²`, total: floorArea * 0.9 * unitCosts.finish },
-        { name: "Systems Integration", quantity: `${design.connectors.length} cores`, total: design.connectors.length * unitCosts.systems * 80 },
+    const connectorCount = Math.max(1, design.connectors.length);
+    const systemsLength = connectorCount * (design.floors * 14 + 30);
+    const materials = [
+        {
+            key: "foundation",
+            name: "3D Print Concrete",
+            quantity: foundationVolume,
+            unit: "m³",
+            unitCost: unitCosts.foundation,
+            mass: foundationVolume * densities.concrete,
+            carbon: foundationVolume * densities.concrete * carbonFactors.concrete,
+        },
+        {
+            key: "walls",
+            name: "Envelope Shell",
+            quantity: wallArea,
+            unit: "m²",
+            unitCost: unitCosts.wall,
+            mass: wallVolume * densities.wallComposite,
+            carbon: wallVolume * densities.wallComposite * carbonFactors.wallComposite,
+        },
+        {
+            key: "roof",
+            name: "Roof Assembly",
+            quantity: roofArea,
+            unit: "m²",
+            unitCost: unitCosts.roof,
+            mass: roofVolume * densities.roof,
+            carbon: roofVolume * densities.roof * carbonFactors.roof,
+        },
+        {
+            key: "glazing",
+            name: "Glazing Package",
+            quantity: glazingArea,
+            unit: "m²",
+            unitCost: unitCosts.glazing,
+            mass: glazingArea * densities.glass,
+            carbon: glazingArea * densities.glass * carbonFactors.glass,
+        },
+        {
+            key: "finish",
+            name: "Interior Fit-Out",
+            quantity: floorArea * 0.9,
+            unit: "m²",
+            unitCost: unitCosts.finish,
+            mass: floorArea * 0.9 * densities.finishes,
+            carbon: floorArea * 0.9 * densities.finishes * carbonFactors.finishes,
+        },
+        {
+            key: "systems",
+            name: "Systems Integration",
+            quantity: systemsLength,
+            unit: "m",
+            unitCost: unitCosts.systems,
+            mass: systemsLength * densities.systems,
+            carbon: systemsLength * densities.systems * carbonFactors.systems,
+        },
     ];
-    const totalCost = entriesRaw.reduce((sum, item) => sum + item.total, 0);
+
+    const formatQuantity = (item) => {
+        const decimals = item.unit === "m³" ? 2 : item.unit === "m" ? 0 : 0;
+        return `${item.quantity.toFixed(decimals)} ${item.unit}`;
+    };
+
+    const totalCost = materials.reduce((sum, item) => sum + item.unitCost * item.quantity, 0);
+    const totalMass = materials.reduce((sum, item) => sum + item.mass, 0);
+    const totalCarbon = materials.reduce((sum, item) => sum + item.carbon, 0);
     const currencyFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-    const entries = entriesRaw.map((entry) => ({
-        name: entry.name,
-        quantity: entry.quantity,
-        unitCost: currencyFormatter.format(entry.total / Math.max(1, parseFloat(entry.quantity))),
-        total: currencyFormatter.format(entry.total),
+    const entries = materials.map((item) => ({
+        name: item.name,
+        quantity: formatQuantity(item),
+        unitCost: currencyFormatter.format(item.unitCost),
+        total: currencyFormatter.format(item.unitCost * item.quantity),
     }));
-    const printHours = (floorArea * 10.7639) / { gantry: 48, arm: 55, swarm: 38 }[design.params.fabricator] * 2;
-    return { entries, totalCost, printHours, currencyFormatter };
+    const printSpeed = { gantry: 48, arm: 55, swarm: 38 }[design.params.fabricator] || 48;
+    const printHours = ((floorArea * 10.7639) / printSpeed) * (1 + wallThickness * 2.2);
+    const wallHeight = design.rooms.reduce((sum, room) => sum + room.height, 0) / Math.max(design.rooms.length, 1);
+    const printLayers = wallHeight / 0.02;
+    const massInsights = [
+        { label: "Total Material Mass", value: `${(totalMass / 1000).toFixed(1)} t` },
+        { label: "Embodied Carbon (BoM)", value: `${Math.round(totalCarbon).toLocaleString()} kg CO₂e` },
+        { label: "Carbon Intensity", value: `${Math.round(totalCarbon / Math.max(areaM2, 1))} kg/m²` },
+        { label: "Print Layers", value: `${Math.round(printLayers)} layers` },
+    ];
+    return {
+        entries,
+        totalCost,
+        printHours,
+        currencyFormatter,
+        totalMass,
+        massInsights,
+        embodiedCarbonTotal: totalCarbon,
+        printLayers,
+    };
 }
 
-function buildTimeline(design, floorArea, printHours, fabricator) {
-    const totalDays = Math.ceil(printHours / 12 + design.floors * 1.5 + 6);
+function buildTimeline(design, floorArea, materialCosts, fabricator, riskScore) {
+    const printHours = materialCosts.printHours;
+    const finishingDays = design.floors * 1.5;
+    const systemsHours = floorArea * 0.3;
+    const baseDays = Math.ceil(printHours / 12 + finishingDays + 6);
+    const riskBuffer = Math.max(1, Math.round(riskScore * 10));
+    const totalDays = baseDays + riskBuffer;
     return [
         { label: "Print Duration", value: `${printHours.toFixed(1)} hrs` },
-        { label: "Post-Processing", value: `${(design.floors * 1.5).toFixed(1)} days` },
-        { label: "Systems Fit-Out", value: `${(floorArea * 0.3).toFixed(1)} crew hrs` },
+        { label: "Layer Count", value: `${Math.round(materialCosts.printLayers)} layers` },
+        { label: "Systems Fit-Out", value: `${systemsHours.toFixed(1)} crew hrs` },
+        { label: "Resilience Buffer", value: `${riskBuffer} day contingency` },
         { label: "Total Schedule", value: `${totalDays} days (${fabricator})` },
     ];
 }
 
-function buildFinancials(materialCosts, marketValue) {
+function buildFinancials(materialCosts, marketValue, riskPremium) {
     const formatter = materialCosts.currencyFormatter;
-    return [
+    const softCosts = materialCosts.totalCost * 0.35;
+    const insurance = materialCosts.totalCost * riskPremium;
+    const contingency = materialCosts.totalCost * 0.1;
+    const lifecycle = materialCosts.totalCost * 0.12;
+    const totalProjectCost = materialCosts.totalCost + softCosts + insurance + contingency;
+    const netMargin = marketValue.saleValue - totalProjectCost;
+    const rows = [
         { label: "Total Material Cost", value: formatter.format(materialCosts.totalCost) },
-        { label: "Soft Costs + Labor", value: formatter.format(materialCosts.totalCost * 0.35) },
-        { label: "Lifecycle Maintenance (10yr)", value: formatter.format(materialCosts.totalCost * 0.12) },
+        { label: "Soft Costs + Labor", value: formatter.format(softCosts) },
+        { label: "Climate Insurance Premium", value: formatter.format(insurance) },
+        { label: "Contingency Reserve", value: formatter.format(contingency) },
+        { label: "Lifecycle Maintenance (10yr)", value: formatter.format(lifecycle) },
+        { label: "Total Project Cost", value: formatter.format(totalProjectCost) },
         { label: "Projected Sale", value: formatter.format(marketValue.saleValue) },
-        { label: "Net Margin", value: formatter.format(marketValue.saleValue - materialCosts.totalCost * 1.35) },
+        { label: "Net Margin", value: formatter.format(netMargin) },
+    ];
+    return { rows, insurance, contingency, totalProjectCost, netMargin, formatter };
+}
+
+function buildClimateEconomics(assessment, materialCosts, marketValue, financial) {
+    const formatter = materialCosts.currencyFormatter;
+    const resilienceROI = marketValue.saleValue - (financial.totalProjectCost + materialCosts.totalCost * assessment.riskScore * 0.12);
+    return [
+        { label: "Risk Score", value: `${Math.round(assessment.riskScore * 100)} / 100` },
+        { label: "Insurance Premium", value: formatter.format(financial.insurance) },
+        { label: "Recommended Mitigation", value: formatter.format(materialCosts.totalCost * (0.05 + assessment.riskScore * 0.1)) },
+        { label: "Post-Mitigation ROI", value: formatter.format(resilienceROI) },
     ];
 }
 
@@ -617,7 +903,7 @@ function buildEnvelope(design, climate) {
     ];
 }
 
-function estimateMarketValue(areaSqft, location) {
+function estimateMarketValue(areaSqft, location, climateAssessment) {
     const costIndexByCountry = {
         us: 1.28,
         ca: 1.12,
@@ -632,16 +918,27 @@ function estimateMarketValue(areaSqft, location) {
     const basePrice = 240;
     const countryCode = location?.country_code?.toLowerCase();
     const costFactor = costIndexByCountry[countryCode] || defaultCost;
-    const saleValue = areaSqft * basePrice * costFactor;
+    const resilienceModifier = 1 - clamp(climateAssessment?.riskScore ?? 0.4, 0, 1) * 0.12;
+    const saleValue = areaSqft * basePrice * costFactor * clamp(resilienceModifier, 0.65, 1.05);
     const marketPressure = location?.population > 1500000 ? "High Demand" : location?.population > 400000 ? "Emerging" : "Niche";
-    return { saleValue, marketPressure, costFactor };
+    return { saleValue, marketPressure, costFactor, resilienceModifier };
 }
 
 function assessClimate(climate, location) {
+    const defaultAssessment = {
+        risks: [
+            {
+                type: "Data Pending",
+                level: "Medium",
+                description: "Run a generation to synchronize site-specific climate analytics.",
+            },
+        ],
+        riskScore: 0.45,
+        label: "Medium",
+        premium: 0.05,
+    };
     if (!climate) {
-        return [
-            { type: "Data Pending", level: "Medium", description: "Run a generation to synchronize site-specific climate analytics." },
-        ];
+        return defaultAssessment;
     }
     const risks = [];
     const floodIndex = climate.precipitation > 1400 || climate.seaLevel === "coastal" ? "High" : climate.precipitation > 900 ? "Medium" : "Low";
@@ -652,12 +949,18 @@ function assessClimate(climate, location) {
     risks.push({ type: "Extreme Heat", level: heatIndex, description: `Average temperature ${climate.temperature.toFixed(1)}°C and ${climate.degreeDays} heating degree days.` });
     risks.push({ type: "High Winds", level: windIndex, description: `Gust potential ${climate.wind.toFixed(1)}m/s; design roof uplift anchors accordingly.` });
     risks.push({ type: "Wildfire", level: fireIndex, description: `Relative humidity ${climate.humidity}% with vegetation index ${climate.vegetation}.` });
-    return risks;
+    const weight = { Low: 0.18, Medium: 0.48, High: 0.88 };
+    const aggregate = risks.reduce((sum, risk) => sum + (weight[risk.level] || 0.48), 0);
+    const riskScore = clamp(aggregate / (risks.length * 0.88), 0, 1);
+    const label = riskScore > 0.66 ? "High" : riskScore > 0.33 ? "Medium" : "Low";
+    const premium = 0.02 + riskScore * 0.08;
+    return { risks, riskScore, label, premium };
 }
 
-function buildClimateStrategies(risks, design) {
+function buildClimateStrategies(assessment, design) {
     const strategies = [];
-    if (!risks) return strategies;
+    if (!assessment) return strategies;
+    const risks = assessment.risks || [];
     const highRisk = risks.filter((r) => r.level === "High");
     const mediumRisk = risks.filter((r) => r.level === "Medium");
     strategies.push({ label: "Structure", value: `${design.params.envelope} shell + hurricane straps` });
@@ -715,8 +1018,9 @@ function environmentFromLocation(location, manual) {
     return location.elevation > 800 ? "mountain" : "forest";
 }
 
-function updateEnvironment(env) {
+function updateEnvironment(env, location) {
     while (environmentGroup.children.length) environmentGroup.remove(environmentGroup.children[0]);
+    applyGroundTexture(location);
     const palette = {
         urban: 0x111827,
         coastal: 0x0ea5e9,
@@ -736,12 +1040,26 @@ function updateEnvironment(env) {
             tower.position.set(-10 + Math.random() * 6, tower.geometry.parameters.height / 2, -8 - Math.random() * 6);
             skyline.add(tower);
         }
+        if (location?.population) {
+            const density = clamp(location.population / 1500000, 0.4, 1.5);
+            skyline.children.forEach((tower, idx) => {
+                tower.position.x += Math.sin(idx) * density;
+                tower.position.z -= Math.cos(idx) * density * 1.5;
+            });
+        }
         environmentGroup.add(skyline);
+        const street = new THREE.Mesh(new THREE.PlaneGeometry(22, 4), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+        street.rotation.x = -Math.PI / 2;
+        street.position.set(0, -0.009, 6);
+        environmentGroup.add(street);
     } else if (env === "coastal") {
         const water = new THREE.Mesh(new THREE.PlaneGeometry(40, 20), new THREE.MeshStandardMaterial({ color: 0x0ea5e9, transparent: true, opacity: 0.65 }));
         water.rotation.x = -Math.PI / 2;
         water.position.set(0, -0.01, -12);
         environmentGroup.add(water);
+        const pier = new THREE.Mesh(new THREE.BoxGeometry(6, 0.3, 2), new THREE.MeshStandardMaterial({ color: 0xe2e8f0 }));
+        pier.position.set(-6, 0.15, -4);
+        environmentGroup.add(pier);
     } else if (env === "forest") {
         const forest = new THREE.Group();
         for (let i = 0; i < 25; i++) {
@@ -757,11 +1075,50 @@ function updateEnvironment(env) {
         dunes.rotation.x = -Math.PI / 2;
         dunes.position.z = -14;
         environmentGroup.add(dunes);
+        const cactusMaterial = new THREE.MeshStandardMaterial({ color: 0x15803d });
+        for (let i = 0; i < 6; i++) {
+            const cactus = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 2.4, 12), cactusMaterial);
+            cactus.position.set((Math.random() - 0.5) * 16, 1.2, -8 - Math.random() * 10);
+            environmentGroup.add(cactus);
+        }
     } else if (env === "mountain") {
         const peak = new THREE.Mesh(new THREE.ConeGeometry(6, 8, 32), new THREE.MeshStandardMaterial({ color: 0x6b7280 }));
         peak.position.set(-8, 4, -15);
         environmentGroup.add(peak);
+        const snow = new THREE.Mesh(new THREE.ConeGeometry(6.2, 2.6, 32), new THREE.MeshStandardMaterial({ color: 0xf8fafc, transparent: true, opacity: 0.75 }));
+        snow.position.set(-8, 6.4, -15);
+        environmentGroup.add(snow);
     }
+}
+
+function collectInputParams() {
+    return {
+        location: document.getElementById("location").value,
+        lotWidth: Number(document.getElementById("lotWidth").value),
+        lotLength: Number(document.getElementById("lotLength").value),
+        orientation: document.getElementById("orientation").value,
+        environment: document.getElementById("environment").value,
+        area: Number(document.getElementById("area").value) / 10.7639,
+        floors: Number(document.getElementById("floors").value),
+        bedrooms: Number(document.getElementById("bedrooms").value),
+        bathrooms: Number(document.getElementById("bathrooms").value),
+        sustainability: document.getElementById("sustainability").value,
+        envelope: document.getElementById("envelope").value,
+        variantCount: Number(document.getElementById("variantCount").value),
+        energySystem: document.getElementById("energySystem").value,
+        waterStrategy: document.getElementById("waterStrategy").value,
+        fabricator: document.getElementById("fabricator").value,
+        palette: document.getElementById("palette").value,
+        budget: Number(document.getElementById("budget").value),
+    };
+}
+
+async function resolveSiteContext(params) {
+    const location = await geocodeLocation(params.location);
+    const climate = location ? await fetchClimate(location.latitude, location.longitude) : null;
+    if (climate) climate.seaLevel = params.environment === "coastal" ? "coastal" : undefined;
+    const environment = environmentFromLocation(location, params.environment);
+    return { location, climate, environment };
 }
 
 async function generateDesigns() {
@@ -775,35 +1132,17 @@ async function generateDesigns() {
 
     try {
         state.designs = [];
+        state.sweepStats = null;
+        state.totalGenerated = 0;
+        state.activeIndex = 0;
         if (ui.designList) ui.designList.innerHTML = "";
 
-        const params = {
-            location: document.getElementById("location").value,
-            lotWidth: Number(document.getElementById("lotWidth").value),
-            lotLength: Number(document.getElementById("lotLength").value),
-            orientation: document.getElementById("orientation").value,
-            environment: document.getElementById("environment").value,
-            area: Number(document.getElementById("area").value) / 10.7639,
-            floors: Number(document.getElementById("floors").value),
-            bedrooms: Number(document.getElementById("bedrooms").value),
-            bathrooms: Number(document.getElementById("bathrooms").value),
-            sustainability: document.getElementById("sustainability").value,
-            envelope: document.getElementById("envelope").value,
-            variantCount: Number(document.getElementById("variantCount").value),
-            energySystem: document.getElementById("energySystem").value,
-            waterStrategy: document.getElementById("waterStrategy").value,
-            fabricator: document.getElementById("fabricator").value,
-            palette: document.getElementById("palette").value,
-            budget: Number(document.getElementById("budget").value),
-        };
+        const params = collectInputParams();
 
         showGenerationProgress(params.variantCount);
 
-        const location = await geocodeLocation(params.location);
-        const climate = location ? await fetchClimate(location.latitude, location.longitude) : null;
-        if (climate) climate.seaLevel = params.environment === "coastal" ? "coastal" : undefined;
-        const environment = environmentFromLocation(location, params.environment);
-        updateEnvironment(environment);
+        const { location, climate, environment } = await resolveSiteContext(params);
+        updateEnvironment(environment, location);
 
         for (let i = 0; i < params.variantCount; i++) {
             const seed = randomUint32();
@@ -819,26 +1158,10 @@ async function generateDesigns() {
             throw new Error("No designs generated");
         }
 
-        if (!ui.designList) {
-            throw new Error("Design list container missing");
-        }
-
-        ui.designList.innerHTML = state.designs
-            .map(
-                (entry, idx) => `
-            <div class="design-item" data-index="${idx}">
-                <strong>${entry.design.id}</strong>
-                <span>${entry.analytics.programProfile}</span>
-                <span>${Math.round(entry.analytics.areaSqft).toLocaleString()} sqft · ${entry.design.features.roofType}</span>
-            </div>
-        `
-            )
-            .join("");
-
-        ui.designList.querySelectorAll(".design-item").forEach((item) => {
-            item.addEventListener("click", () => activateDesign(Number(item.dataset.index)));
-        });
-
+        state.designs.sort((a, b) => (b.analytics.optimizationScore || 0) - (a.analytics.optimizationScore || 0));
+        state.totalGenerated = state.designs.length;
+        updateVariantCountLabel();
+        renderDesignList();
         activateDesign(0);
         completeGenerationProgress({
             message: "Layouts ready. Select a variant to inspect.",
@@ -868,6 +1191,7 @@ async function generateDesigns() {
 
 function activateDesign(index) {
     if (!ui.designList) return;
+    state.activeIndex = index;
     ui.designList.querySelectorAll(".design-item").forEach((item) => item.classList.remove("active"));
     const item = ui.designList.querySelector(`[data-index="${index}"]`);
     if (item) item.classList.add("active");
@@ -879,10 +1203,96 @@ function activateDesign(index) {
     setSimulationStatus(`Ready to simulate ${selected.design.id}.`);
 }
 
+async function runMegaBatch() {
+    if (!ui.megaBatch) return;
+    const params = collectInputParams();
+    const sweepSize = Math.max(1024, params.variantCount * 48);
+    const retain = Math.min(72, Math.max(params.variantCount, 36));
+    ui.megaBatch.disabled = true;
+    ui.megaBatch.textContent = "🌀 Sweeping…";
+    if (ui.generate) ui.generate.disabled = true;
+    showGenerationProgress(sweepSize);
+    setSimulationStatus(`Mega batch sweep running (${sweepSize} candidates)…`);
+
+    try {
+        const { location, climate, environment } = await resolveSiteContext(params);
+        updateEnvironment(environment, location);
+        state.designs = [];
+        state.activeIndex = 0;
+        state.totalGenerated = 0;
+        state.sweepStats = null;
+        if (ui.designList) ui.designList.innerHTML = "";
+
+        const cohort = [];
+        let aggregateScore = 0;
+        let bestEntry = null;
+
+        for (let i = 0; i < sweepSize; i++) {
+            const seed = randomUint32();
+            const design = generateLayout(seed, params);
+            const analytics = computeAnalytics(design, { climate, location });
+            aggregateScore += analytics.optimizationScore || 0;
+            if (!bestEntry || (analytics.optimizationScore || 0) > (bestEntry.analytics.optimizationScore || 0)) {
+                bestEntry = { design, seed, analytics };
+            }
+            if (cohort.length < retain) {
+                cohort.push({ design, seed, analytics });
+            } else {
+                let worstIndex = 0;
+                for (let j = 1; j < cohort.length; j++) {
+                    if ((cohort[j].analytics.optimizationScore || 0) < (cohort[worstIndex].analytics.optimizationScore || 0)) {
+                        worstIndex = j;
+                    }
+                }
+                if ((analytics.optimizationScore || 0) > (cohort[worstIndex].analytics.optimizationScore || 0)) {
+                    cohort[worstIndex] = { design, seed, analytics };
+                }
+            }
+            updateGenerationProgress(i + 1, sweepSize);
+            // eslint-disable-next-line no-await-in-loop
+            await yieldToFrame();
+        }
+
+        state.designs = cohort.sort((a, b) => (b.analytics.optimizationScore || 0) - (a.analytics.optimizationScore || 0));
+        state.totalGenerated = sweepSize;
+        state.sweepStats = {
+            totalCandidates: sweepSize,
+            averageScore: aggregateScore / sweepSize,
+            topScore: bestEntry?.analytics.optimizationScore || 0,
+            bestId: bestEntry?.design.id,
+        };
+        updateVariantCountLabel();
+        renderDesignList();
+        activateDesign(0);
+        completeGenerationProgress({
+            message: `Mega batch ready. Top ${state.designs.length} retained.`,
+            success: true,
+        });
+        const leader = state.sweepStats?.bestId
+            ? ` Leader ${state.sweepStats.bestId} (${Math.round(state.sweepStats.topScore || 0)} pts).`
+            : "";
+        setSimulationStatus(`Mega batch complete: ${sweepSize} candidates synthesized.${leader}`);
+    } catch (error) {
+        console.error("Mega batch error", error);
+        setSimulationStatus("Mega batch failed. Try smaller variant counts.");
+        completeGenerationProgress({ message: "Mega batch failed.", success: false });
+    } finally {
+        if (ui.megaBatch) {
+            ui.megaBatch.disabled = false;
+            ui.megaBatch.textContent = "🧬 Mega Batch 1K Sweep";
+        }
+        if (ui.generate) ui.generate.disabled = false;
+    }
+}
+
 if (ui.generate) {
     ui.generate.addEventListener("click", generateDesigns);
 } else {
     console.warn("Generate button not found; layout synthesis UI inactive.");
+}
+
+if (ui.megaBatch) {
+    ui.megaBatch.addEventListener("click", runMegaBatch);
 }
 
 window.addEventListener("resize", () => {
