@@ -135,10 +135,14 @@
                 <div class="slider-input">
                     <label style="flex: 1 1 auto;">
                         Design Variants
-                        <span class="badge" id="variantCountLabel">12 layouts queued</span>
+                        <span class="badge" id="variantCountLabel">24 layouts queued</span>
                     </label>
-                    <input type="range" id="variantCount" min="3" max="24" step="3" value="12" />
+                    <input type="range" id="variantCount" min="6" max="120" step="6" value="24" />
                 </div>
+                <p class="slider-hint">
+                    Increase the slider to sweep larger Pareto sets. Use Mega Batch to synthesize over 1,000 candidates and retain
+                    the highest scoring cohort for detailed review.
+                </p>
             </div>
             </div>
 
@@ -189,7 +193,10 @@
             </div>
             </div>
 
-            <button class="primary-button" id="generate">⚙️ Generate Intelligent Layouts</button>
+            <div class="generation-actions">
+                <button class="primary-button" id="generate">⚙️ Generate Intelligent Layouts</button>
+                <button class="secondary-button" id="megaBatch">🧬 Mega Batch 1K Sweep</button>
+            </div>
             <div class="generation-progress" id="generationProgress" hidden>
                 <div class="progress-bar" aria-hidden="true">
                     <div class="progress-fill" id="generationProgressFill"></div>
@@ -237,10 +244,22 @@
                         <h4>Energy Intensity</h4>
                         <span id="metricEnergy">— kWh/yr</span>
                     </div>
+                    <div class="hero-metric">
+                        <h4>Optimization Score</h4>
+                        <span id="metricScore">— / 100</span>
+                    </div>
+                    <div class="hero-metric">
+                        <h4>Climate Risk</h4>
+                        <span id="metricRisk">—</span>
+                    </div>
                 </div>
                 <div class="info-section">
                     <h4>Spatial Composition</h4>
                     <div class="info-grid" id="layoutSummary"></div>
+                </div>
+                <div class="info-section">
+                    <h4>Optimization Scorecard</h4>
+                    <div class="info-grid" id="scoreBreakdown"></div>
                 </div>
                 <div class="info-section">
                     <h4>Performance Highlights</h4>
@@ -282,6 +301,10 @@
                     <div class="info-grid" id="timelineInsights"></div>
                 </div>
                 <div class="info-section">
+                    <h4>Material Mass & Carbon</h4>
+                    <div class="info-grid" id="massInsights"></div>
+                </div>
+                <div class="info-section">
                     <h4>Financial Projection</h4>
                     <div class="info-grid" id="financialInsights"></div>
                 </div>
@@ -306,6 +329,10 @@
                 <div class="info-section">
                     <h4>Adaptive Strategies</h4>
                     <div class="info-grid" id="climateStrategies"></div>
+                </div>
+                <div class="info-section">
+                    <h4>Insurance & Resilience Economics</h4>
+                    <div class="info-grid" id="climateEconomics"></div>
                 </div>
             </section>
         </div>
