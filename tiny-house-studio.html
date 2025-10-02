@@ -33,7 +33,7 @@
             </div>
             <div class="header-tile">
                 <span class="label">Queued Variants</span>
-                <strong id="headerVariantBadge">12</strong>
+                <strong id="headerVariantBadge">0</strong>
             </div>
             <div class="header-tile">
                 <span class="label">Environment Lens</span>
@@ -134,11 +134,14 @@
                 </label>
                 <div class="slider-input">
                     <label style="flex: 1 1 auto;">
-                        Design Variants
-                        <span class="badge" id="variantCountLabel">12 layouts queued</span>
+                        Layout Generation
+                        <span class="badge" id="variantCountLabel">Single layout mode</span>
                     </label>
-                    <input type="range" id="variantCount" min="3" max="24" step="3" value="12" />
+                    <input type="range" id="variantCount" min="1" max="1" step="1" value="1" disabled />
                 </div>
+                <p class="slider-hint">
+                    Each click of the generator produces a single, brand-new layout tailored to the inputs above.
+                </p>
             </div>
             </div>
 
@@ -189,7 +192,9 @@
             </div>
             </div>
 
-            <button class="primary-button" id="generate">⚙️ Generate Intelligent Layouts</button>
+            <div class="generation-actions">
+                <button class="primary-button" id="generate">⚙️ Generate Intelligent Layouts</button>
+            </div>
             <div class="generation-progress" id="generationProgress" hidden>
                 <div class="progress-bar" aria-hidden="true">
                     <div class="progress-fill" id="generationProgressFill"></div>
@@ -237,10 +242,22 @@
                         <h4>Energy Intensity</h4>
                         <span id="metricEnergy">— kWh/yr</span>
                     </div>
+                    <div class="hero-metric">
+                        <h4>Optimization Score</h4>
+                        <span id="metricScore">— / 100</span>
+                    </div>
+                    <div class="hero-metric">
+                        <h4>Climate Risk</h4>
+                        <span id="metricRisk">—</span>
+                    </div>
                 </div>
                 <div class="info-section">
                     <h4>Spatial Composition</h4>
                     <div class="info-grid" id="layoutSummary"></div>
+                </div>
+                <div class="info-section">
+                    <h4>Optimization Scorecard</h4>
+                    <div class="info-grid" id="scoreBreakdown"></div>
                 </div>
                 <div class="info-section">
                     <h4>Performance Highlights</h4>
@@ -282,6 +299,10 @@
                     <div class="info-grid" id="timelineInsights"></div>
                 </div>
                 <div class="info-section">
+                    <h4>Material Mass & Carbon</h4>
+                    <div class="info-grid" id="massInsights"></div>
+                </div>
+                <div class="info-section">
                     <h4>Financial Projection</h4>
                     <div class="info-grid" id="financialInsights"></div>
                 </div>
@@ -307,6 +328,10 @@
                     <h4>Adaptive Strategies</h4>
                     <div class="info-grid" id="climateStrategies"></div>
                 </div>
+                <div class="info-section">
+                    <h4>Insurance & Resilience Economics</h4>
+                    <div class="info-grid" id="climateEconomics"></div>
+                </div>
             </section>
         </div>
         </main>
@@ -320,6 +345,9 @@
             }
         });
     </script>
-    <script type="module" src="scripts/tiny-house.js"></script>
+    <script src="https://unpkg.com/three@0.155.0/build/three.min.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/three@0.155.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/three@0.155.0/examples/js/objects/Sky.js" crossorigin="anonymous"></script>
+    <script src="scripts/tiny-house.js"></script>
 </body>
 </html>
